@@ -1,0 +1,114 @@
+[
+    {
+        "_comment": "Selector of the HTML table object",
+        "selector": "",
+        "props": [
+            [
+                "margin",
+                "0 auto"
+            ],
+            [
+                "table-layout",
+                "fixed"
+            ],
+            [
+                "border-collapse",
+                "separate"
+            ],
+            [
+                "border-spacing",
+                "0px"
+            ],
+            [
+                "border",
+                "none"
+            ],
+            [
+                "border-bottom",
+                "2px solid black"
+            ]
+        ]
+    },
+    {
+        "_comment": "Selector for all cells in the table",
+        "selector": "th, td",
+        "props": [
+            [
+                "padding",
+                "1ex 1em"
+            ],
+            [
+                "font-family",
+                "Arial"
+            ],
+            [
+                "font-size",
+                "0.8em"
+            ],
+            [
+                "text-align",
+                "center"
+            ]
+        ]
+    },
+    {
+        "_comment": "Fix table headers to top of the page on scroll",
+        "selector": "thead",
+        "props": [
+            [
+                "position",
+                "sticky"
+            ],
+            [
+                "top",
+                "0px"
+            ],
+            [
+                "background-color",
+                "white"
+            ]
+        ]
+    },
+    {
+        "_comment": "Table body top borders",
+        "selector": "thead th",
+        "props": [
+            [
+                "border-bottom",
+                "2px solid black"
+            ]
+        ]
+    },
+    {
+        "_comment": "Placeholder for highlight on hover level 1 of index",
+        "selector": "tbody > tr > th.level1",
+        "props": [
+            [
+                "border-top",
+                "dashed 1px transparent"
+            ],
+            [
+                "border-bottom",
+                "dashed 1px transparent"
+            ]
+        ]
+    },
+    {
+        "_comment": "Highlight on hover level 1 of index",
+        "selector": "tbody > tr:hover > th.level1",
+        "props": [
+            [
+                "border-top",
+                "dashed 1px darkcyan"
+            ],
+            [
+                "border-bottom",
+                "dashed 1px darkcyan"
+            ],
+            [
+                "color",
+                "darkcyan"
+            ]
+        ]
+    }
+]
