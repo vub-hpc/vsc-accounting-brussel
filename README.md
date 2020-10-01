@@ -51,7 +51,7 @@ $ accounting-report -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node
 The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
 
 Supported resource managers:
-* Torque
+* Torque: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
 
 ### User account data
 
