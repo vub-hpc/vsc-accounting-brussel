@@ -57,14 +57,13 @@ import argparse
 from datetime import date, datetime
 
 from vsc.utils import fancylogger
+from vsc.accounting.version import VERSION
 from vsc.accounting.exit import error_exit
 from vsc.accounting.config.parser import MainConf
 from vsc.accounting.data.parser import DataFile
 from vsc.accounting.counters import ComputeTimeCount
 
 import vsc.accounting.reports as report
-
-VERSION = '1.0.0'
 
 logger = fancylogger.getLogger()
 fancylogger.logToScreen(True)
@@ -111,7 +110,7 @@ def main():
         prog='accounting-report',
         description='Generate accurate accounting reports about the computational resources used in an HPC cluster',
     )
-    cli.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(VERSION))
+    cli.add_argument('-v', '--version', action='version', version='%(prog)s from vsc-accounting-brussel v{}'.format(VERSION))
     cli.add_argument(
         '-d', dest='debug', help='use debug log level', required=False, action='store_true',
     )

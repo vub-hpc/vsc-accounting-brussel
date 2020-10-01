@@ -33,8 +33,13 @@ vsc-accounting-brussel base distribution setup.py
 import vsc.install.shared_setup as shared_setup
 from vsc.install.shared_setup import ad
 
+# Read global version from version.py
+CONSTANTS = {}
+with open("lib/vsc/accounting/version.py") as fp:
+    exec(fp.read(), CONSTANTS)
+
 PACKAGE = {
-    'version': '1.0.0',
+    'version': CONSTANTS["VERSION"],
     'author': [ad],
     'maintainer': [ad],
     'setup_requires': [
