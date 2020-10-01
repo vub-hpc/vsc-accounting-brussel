@@ -52,15 +52,27 @@ class ConfigFile:
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
-        # Config file paths
-        self.usercfg = {
-            'name': filename,
-            'dir': appdirs.user_config_dir('vsc-accounting'),
-        }
-        self.usercfg.update({'path': os.path.join(self.usercfg['dir'], self.usercfg['name'])})
+        self.usercfg = {'name': filename}
 
-        # Generate a default config file if file is missing in user's config dir
-        self.copy_pkgdefault()
+        # Directories that can contain config files, ordered by preference
+        config_dirs = (
+            appdirs.user_config_dir('vsc-accounting'),
+            '/etc/vsc-accounting',
+            '/etc',
+        )
+
+        # Check existence of config files
+        existing_configs = [d for d in config_dirs if os.path.isfile(os.path.join(d, self.usercfg['name']))]
+
+        if len(existing_configs) > 0:
+            # Use config file from top hit
+            self.usercfg.update({'dir': existing_configs[0]})
+            dbgmsg_path = os.path.join(self.usercfg['dir'], self.usercfg['name'])
+            self.log.debug("Found existing configuration file: %s", dbgmsg_path)
+        else:
+            # Copy default config file to user's dir if config file is not found
+            self.usercfg.update({'dir': appdirs.user_config_dir('vsc-accounting')})
+            self.copy_pkgdefault()
 
         # Read contents of config file
         self.opts = configparser.ConfigParser()
@@ -71,7 +83,7 @@ class ConfigFile:
 
     def copy_pkgdefault(self, force=False):
         """
-        If usercfg path is missing, copy the corresponding sample from the project's package
+        Copy the corresponding sample from the project's package to destination config dir
         Sample config files are located inside the 'config' folder of the package
         - force: (boolean) copy sample regardless of existence of user's config
         """
@@ -79,11 +91,12 @@ class ConfigFile:
         make_dir(self.usercfg['dir'])
 
         # Copy sample file to user's config dir
-        pkgcfg = pkg_resources.resource_filename(__name__, self.usercfg['name'])
-        file_copied = copy_file(pkgcfg, self.usercfg['path'], force=force)
+        pkgcfg_path = pkg_resources.resource_filename(__name__, self.usercfg['name'])
+        usrcfg_path = os.path.join(self.usercfg['dir'], self.usercfg['name'])
+        file_copied = copy_file(pkgcfg_path, usrcfg_path, force=force)
 
         if file_copied:
-            self.log.warning("Created user configuration file '%s' from sample file", self.usercfg['path'])
+            self.log.warning("Installed sample configuration file into '%s'", usrcfg_path)
 
     def get(self, section, option, fallback=None, mandatory=True):
         """
@@ -133,12 +146,14 @@ class ConfigFile:
         Wrapper of configparse.read() that raises error if config file is not found
         configparser.read() just returns an empty object if config file is not found
         """
-        if os.path.isfile(self.usercfg['path']):
-            self.opts.read(self.usercfg['path'])
-            self.log.debug("Succesfully parsed configuration file: %s", self.usercfg['path'])
+        config_path = os.path.join(self.usercfg['dir'], self.usercfg['name'])
+        if os.path.isfile(config_path):
+            self.opts.read(config_path)
+            self.log.debug("Succesfully parsed configuration file: %s", config_path)
         else:
-            errmsg = f"Configuration file not found: {self.usercfg['path']}"
+            errmsg = f"Configuration file not found: {config_path}"
             raise FileNotFoundError(errmsg)
 
 
+fancylogger.setLogLevelDebug()
 MainConf = ConfigFile('vsc-accounting.ini')
