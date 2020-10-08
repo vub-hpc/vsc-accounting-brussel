@@ -30,20 +30,6 @@ Infrastructure
 * Access to ELK server with the logstash of your job scheduler
 * Access to VSC Account page (optional)
 
-## Example Use
-
-The following example generates 3 accounting reports (`-c`):
-* **compute-percent**: total use of compute time (in percentage)
-* **running-jobs**: total amount of running jobs
-* **top-users-percent**: ranking of users by percentage of compute time
-* **top-sites-percent**: ranking of research sites by percentage of compute time
-
-Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`), only consider two specific groups of nodes in the cluster (`-n node-group1 node-group2`) and will be made in HTML format (`-f html`):
-
-```bash
-$ accounting-report -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node-group1 node-group2 -c compute-percent running-jobs top-users-percent top-sites-percent
-```
-
 ## Data Sources
 
 ### ElasticSearch
@@ -51,7 +37,7 @@ $ accounting-report -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node
 The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
 
 Supported resource managers:
-* Torque: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
+* **Torque**: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
 
 ### User account data
 
@@ -78,7 +64,7 @@ Attributes of each nodegroup in the spec file:
 
 Reports of the accounting stats can be generated in 3 formats:
 * rendered as plots or charts: choose SVG, PNG, JPG image format (`-f`)
-* rendered as plots/charts and including the resulting data in a separate CSV file (`-c`)
+* rendered as plots/charts and including the resulting data in a separate CSV file (`-t`)
 * in a HTML document containing the plot/chart and related data tables (`-f html`)
 
 The following reports are available:
@@ -101,4 +87,19 @@ The following reports are available:
 * **top-fields-percent**: percentage of compute time used by each research field across selected node groups (plot over time and pie chart)
 * **top-sites**: total compute time used by each research site across selected node groups
 * **top-sites-percent**: percentage of total compute time used by each research site across selected node groups.
+
+## Example
+
+The following example generates 4 accounting reports:
+* **compute-percent**: total use of compute time (in percentage)
+* **running-jobs**: total amount of running jobs
+* **top-users-percent**: ranking of users by percentage of compute time
+* **top-sites-percent**: ranking of research sites by percentage of compute time
+
+```bash
+$ accounting-report compute-percent running-jobs top-users-percent top-sites-percent
+  -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node-group1 node-group2 -t
+```
+
+Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) of two specific groups of nodes in the cluster (`-n node-group1 node-group2`). They will be saved in the folder `general-nodes` in the current working directory (`-o`), in HTML format (`-f html`) and also saving all data tables as CSV files (`-t`).
 
