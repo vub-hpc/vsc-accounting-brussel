@@ -81,6 +81,17 @@ def valid_dirpath(dirpath):
         raise argparse.ArgumentTypeError(errmsg)
 
 
+def valid_filepath(filepath):
+    """
+    Validate file path passed through argparse
+    """
+    if os.path.isfile(filepath):
+        return filepath
+    else:
+        errmsg = f"File '{filepath}' does not exist"
+        raise argparse.ArgumentTypeError(errmsg)
+
+
 def valid_isodate(strdate):
     """
     Validate date string passed through argparse
@@ -96,6 +107,31 @@ def valid_isodate(strdate):
 
 
 def main():
+    # Core command line arguments
+    cli = argparse.ArgumentParser(
+        prog='accounting-report',
+        description='Generate accurate accounting reports about the computational resources used in an HPC cluster',
+    )
+    cli.add_argument('-v', '--version', action='version', version='%(prog)s from vsc-accounting-brussel v{}'.format(VERSION))
+    cli.add_argument(
+        '-d', dest='debug', help='use debug log level', required=False, action='store_true',
+    )
+    #cli.add_argument(
+    #    '-c',
+    #    dest='config_file',
+    #    help='path to configuration file (default: ~/.config/vsc-accounting/vsc-accouning.ini)',
+    #    default=None,
+    #    required=False,
+    #    type=valid_filepath,
+    #)
+
+    cli_core_args, cli_extra_args = cli.parse_known_args()
+
+    # Debug level logs
+    if cli_core_args.debug:
+        fancylogger.setLogLevelDebug()
+        logger.debug("Switched logging to debug verbosity")
+
     # Read nodegroup specs and default values
     try:
         nodegroups_spec = MainConf.get('nodegroups', 'specsheet')
@@ -105,15 +141,6 @@ def main():
     else:
         nodegroups = DataFile(nodegroups_spec).contents
 
-    # Set command line arguments
-    cli = argparse.ArgumentParser(
-        prog='accounting-report',
-        description='Generate accurate accounting reports about the computational resources used in an HPC cluster',
-    )
-    cli.add_argument('-v', '--version', action='version', version='%(prog)s from vsc-accounting-brussel v{}'.format(VERSION))
-    cli.add_argument(
-        '-d', dest='debug', help='use debug log level', required=False, action='store_true',
-    )
     cli.add_argument(
         '-s',
         dest='start_date',
@@ -195,11 +222,6 @@ def main():
 
     # Read command line arguments
     cli_args = cli.parse_args()
-
-    # Debug level logs
-    if cli_args.debug:
-        fancylogger.setLogLevelDebug()
-        logger.debug("Switched logging to debug verbosity")
 
     # Set absolute path of output directory
     if cli_args.output_dir:

@@ -155,5 +155,4 @@ class ConfigFile:
             raise FileNotFoundError(errmsg)
 
 
-fancylogger.setLogLevelDebug()
 MainConf = ConfigFile('vsc-accounting.ini')
