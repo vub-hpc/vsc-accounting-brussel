@@ -39,7 +39,7 @@ from vsc.utils import fancylogger
 from vsc.config.base import ANTWERPEN, BRUSSEL, GENT, LEUVEN, INSTITUTE_LONGNAME
 from vsc.accountpage.client import AccountpageClient
 from vsc.accounting.exit import error_exit, cancel_process_pool
-from vsc.accounting.config.parser import MainConf
+from vsc.accounting.config.parser import MainConf, ConfigFile
 from vsc.accounting.data.parser import DataFile
 
 logger = fancylogger.getLogger()
@@ -74,6 +74,15 @@ class UserDB:
         except TypeError as err:
             errmsg = f"Cannot generate user data base from non-iterable user list: {requested_users}"
             error_exit(self.log, errmsg)
+
+        # Get token from configuration file to access VSC account page
+        TokenConfig = ConfigFile()
+        try:
+            vsc_token_file = MainConf.get('userdb', 'vsc_token_file', fallback='vsc-access.ini', mandatory=False)
+            self.vsc_token = TokenConfig.load(vsc_token_file).get('MAIN', 'access_token')
+        except KeyError as err:
+            error_exit(self.log, err)
+
 
         # Load all user data base from local cache
         self.cache = self.load_db_cache()
@@ -144,20 +153,14 @@ class UserDB:
         Retrieve and update list of VSC users with data from VSC account page
         - username: (string) VSC ID or institute user of the VSC account
         """
-        # Use token from configuration file
-        try:
-            token = MainConf.get('userdb', 'vsc_token')
-        except KeyError as err:
-            error_exit(self.log, err)
-
-        client = AccountpageClient(token=token)
+        vsc_api_client = AccountpageClient(token=self.vsc_token)
 
         # Get institute login of the VSC account attached to this username
         if username[0:3] == 'vsc' and username[3].isdigit():
             # VSC ID: query institute login to VSC account page
             self.log.debug(f"[{username}] user treated as VSC ID")
             try:
-                vsc_account = client.account[username].person.get()[1]
+                vsc_account = vsc_api_client.account[username].person.get()[1]
             except HTTPError as err:
                 if err.code == 404:
                     error_exit(self.log, f"[{username}] VSC ID not found in VSC account page")
@@ -175,7 +178,7 @@ class UserDB:
 
         # Retrieve user data from VSC account page
         try:
-            vsc_account = client.account.institute[vsc_login['site']].id[vsc_login['username']].get()[1]
+            vsc_account = vsc_api_client.account.institute[vsc_login['site']].id[vsc_login['username']].get()[1]
         except HTTPError as err:
             if err.code == 404:
                 self.log.debug(f"[{username}] with VSC account '{vsc_login['username']}' not found")

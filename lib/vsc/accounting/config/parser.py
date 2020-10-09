@@ -75,6 +75,8 @@ class ConfigFile:
         except FileNotFoundError as err:
             error_exit(self.log, err)
 
+        return self
+
     def locate_config(self, configfile):
         """
         Determine location of config file, create it if it does not exist
@@ -140,6 +142,8 @@ class ConfigFile:
         else:
             errmsg = f"Configuration option {section} > {option} not found"
             raise KeyError(errmsg)
+
+        return self
 
     def get_digit(self, section, option, fallback=0, mandatory=True):
         """
