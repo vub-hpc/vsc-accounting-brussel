@@ -36,7 +36,7 @@ from datetime import date, datetime
 from urllib.error import HTTPError, URLError
 
 from vsc.utils import fancylogger
-from vsc.config.base import ANTWERPEN, BRUSSEL, GENT, LEUVEN
+from vsc.config.base import ANTWERPEN, BRUSSEL, GENT, LEUVEN, INSTITUTE_LONGNAME
 from vsc.accountpage.client import AccountpageClient
 from vsc.accounting.exit import error_exit, cancel_process_pool
 from vsc.accounting.config.parser import MainConf
@@ -116,20 +116,6 @@ class UserDB:
 
         return cache
 
-    def pretty_vsc_site(self, site):
-        """
-        Return pretty name for the given VSC site
-        - site: (string) name of VSC site
-        """
-        pretty_site = {
-            ANTWERPEN: 'Universiteit Antwerpen',
-            BRUSSEL: 'Vrije Universiteit Brussel',
-            GENT: 'Universiteit Gent',
-            LEUVEN: 'KU Leuven',
-        }
-
-        return pretty_site[site]
-
     def ulb_default_record(self):
         """
         Return default user record for NetID users from ULB
@@ -194,7 +180,7 @@ class UserDB:
             user_record = {
                 # only use first entry of research field
                 'field': vsc_account['research_field'][0],
-                'site': self.pretty_vsc_site(vsc_account['person']['institute']['name']),
+                'site': INSTITUTE_LONGNAME[vsc_account['person']['institute']['name']],
                 'updated': date.today().isoformat(),
             }
 
