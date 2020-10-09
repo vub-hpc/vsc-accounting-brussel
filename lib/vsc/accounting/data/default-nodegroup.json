@@ -1,0 +1,13 @@
+{
+    "default-nodegroup": {
+        "color": "blue",
+        "cores": 40,
+        "hosts": [
+            {
+                "n": 10,
+                "regex": ".*",
+                "start": "2020-01-01"
+            }
+        ]
+    }
+}

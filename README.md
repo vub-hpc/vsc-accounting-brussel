@@ -47,9 +47,9 @@ User accounts identified as VSC accounts will be requested from teh VSC Account 
 
 ## Data Selection
 
-Accounting is limited to a defined time period. At least the initial date (`-s`) is required to generate any of the accounting reports. By default, the accounting is computed with a resolution of days. It is also possible to manually request for lower resolutions (`-r`) and generate weekly, monthly, quaterly or yearly stats, as long as the defined time period can at least cover one time cycle in the requested resolution.
+Accounting is limited to a defined period of time. At least the initial date (`-s`) is required to generate any of the accounting reports. By default, the accounting is computed with a resolution of days. It is also possible to manually request for lower resolutions (`-r`) and generate weekly, monthly, quaterly or yearly stats, as long as the defined time period can at least cover one time cycle in the requested resolution.
 
-It is necessary to define the compute characteristics of the nodes in the cluster and how they are grouped. This information can be provided in a JSON file through the configuration parameter `nodegroups/specsheet`. Please check the provided example file `example-nodegroups.json` for details on its structure. If the definition of the cluster contains multiple node groups, it is possible to request the accounting stats on specific node groups (`-n`).
+It is necessary to describe the compute characteristics of the nodes in the cluster and how they should be grouped. This information can be provided in a JSON file through the configuration parameter `nodegroups/specsheet`. The default specsheet file `default-nodegroup.json` defines a single group of nodes that will match any hostname in the cluster. Please check the provided file `example-nodegroups.json` for a more complex example with multiple groups of nodes. If multiple node groups are defined, it is possible to request the accounting stats on specific node groups (`-n`).
 
 Attributes of each nodegroup in the spec file:
 * Color: color name or hex value (used in some plots)
@@ -59,6 +59,40 @@ Attributes of each nodegroup in the spec file:
     * regex: pattern matching the hostnames of all hosts in this aggregate
     * start: first date in production (date in ISO format: `YYYY-MM-DD`)
     * end: last date in production (date in ISO format: `YYYY-MM-DD`)
+
+Example file `example-nodegroups.json`:
+```json
+{
+    "node-group1": {
+        "color": "blue",
+        "cores": 40,
+        "hosts": [
+            {
+                "n": 10,
+                "regex": "node00[0-9]",
+                "start": "2018-01-01"
+            }
+        ]
+    },
+    "node-group2": {
+        "color": "red",
+        "cores": 16,
+        "hosts": [
+            {
+                "n": 20,
+                "regex": "node0[12][0-9]",
+                "start": "2018-01-01",
+                "end": "2018-08-09"
+            },
+            {
+                "n": 10,
+                "regex": "node03[0-9]",
+                "start": "2018-01-01",
+                "end": "2018-02-02"
+            }
+        ]
+    }
+```
 
 ## Accounting Reports
 
