@@ -116,16 +116,26 @@ class UserDB:
 
         return cache
 
-    def ulb_default_record(self):
+    def user_basic_record(self, username):
         """
-        Return default user record for NetID users from ULB
+        Generate basic user record from user name
+        All VSC IDs are ascribed to their site, other usernames are identified as NetID users from ULB
         WARNING: old NetIDs from VUB without a VSC account are suposed to be already accounted in the cache file
+        - username: (string) username of the account
         """
-        user_record = {
-            'field': 'Unknown',
-            'site': 'Université Libre de Bruxelles',
-            'updated': date.today().isoformat(),
-        }
+        # Research field is always unknown in these cases
+        user_record = {'field': 'Unknown'}
+
+        # Determine site of account
+        site_index = (BRUSSEL, ANTWERPEN, LEUVEN, GENT)
+
+        if username[0:3] == 'vsc' and username[3].isdigit():
+            user_record.update({'site': INSTITUTE_LONGNAME[site_index[vsc_id[3]]]})
+        else:
+            user_record.update({'site': "Université Libre de Bruxelles"})
+
+        # Set timestamp to today
+        user_record.update({'updated': date.today().isoformat()})
 
         return user_record
 
@@ -192,6 +202,7 @@ class UserDB:
         First check local cache. If missing or outdated check VSC account page
         - username: (string) username of the account
         """
+        # Existing user
         if username in self.cache.contents['db']:
             # Retrieve record from existing local cache
             user_record = self.cache.contents['db'][username]
@@ -210,18 +221,19 @@ class UserDB:
                 fresh_record = self.get_vsc_record(username)
                 if fresh_record:
                     # Update outdated record with data from VSC account page
+                    user_record.update(fresh_record)
                     self.log.debug(f"[{username}] user account record updated from VSC account page")
-                    user_record = fresh_record
                 else:
-                    # Leave the record as it is, but refresh its update date
+                    # Account missing in VSC account page, keep existing record in our data base
                     user_record['updated'] = date.today().isoformat()
+        # New user
         else:
             # Retrieve full record from VSC account page
             user_record = self.get_vsc_record(username)
             if not user_record:
-                # Generate a default record for users without a VSC account
-                user_record = self.ulb_default_record()
-                self.log.debug(f"[{username}] user account created as NetID from ULB")
+                # Generate a default record for users not present in VSC account page
+                user_record = self.user_basic_record(username)
+                self.log.debug(f"[{username}] new user account registered as member of {user_record['site']}")
 
         return {username: user_record}
 
