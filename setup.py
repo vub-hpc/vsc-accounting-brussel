@@ -48,7 +48,7 @@ PACKAGE = {
     'install_requires': [
         'vsc-base >= 3.0.1',
         'vsc-utils >= 2.1.0',
-        'vsc-config >= 3.0.1',
+        'vsc-config >= 3.3.4',
         'vsc-accountpage-clients >= 2.1.1',
         # needed to manage config files
         'appdirs',
