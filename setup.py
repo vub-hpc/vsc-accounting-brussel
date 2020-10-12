@@ -68,9 +68,11 @@ PACKAGE = {
     'package_data': {
         "vsc.accounting": [
             "config/vsc-accounting.ini",
+            "config/vsc-access.ini",
+            "data/default-nodegroup.json",
+            "data/example-nodegroups.json",
             "data/html_main_style.html",
             "data/html_table_style.json",
-            "data/example-nodegroups.json",
         ],
     },
     'zip_safe': False,
