@@ -41,6 +41,7 @@ from vsc.accounting.filetools import make_dir, copy_file
 from vsc.accounting.exit import error_exit
 
 DATA_DIR = 'vsc-accounting'
+FORCE_INSTALL = False
 
 
 class DataFile:
@@ -50,14 +51,22 @@ class DataFile:
     Supported formats: JSON, HTML
     """
 
-    def __init__(self, datafile, mandatory=True):
+    def __init__(self, datafile, mandatory=True, force_install=None):
         """
         Determine location of data file and read its contents
         Data files from package resources will be copied to user's data dir if needed
         - datafile: (string) name of the data file or full path to data file
         - mandatory: (boolean) mandatory files must already exist in user's data dir (or be installed)
+        - force_install: (boolean) force copy of data file from package resources, superseeds FORCE_INSTALL
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
+
+        # Fallback to FORCE_INSTALL if force_install is not set
+        if force_install is None:
+            force_install = FORCE_INSTALL
+
+        if force_install:
+            self.log.debug("Installation of data files is enforced")
 
         # Define paths holding package data files by order of preference
         # The 'data' folder in the package resources is set as a fallback location
@@ -75,10 +84,10 @@ class DataFile:
         else:
             # Use datafile in user data directory
             self.datafile = os.path.join(appdirs.user_data_dir(DATA_DIR), datafile)
-            # Copy data file from package contents (if it is missing in user's data dir)
+            # Copy data file from package contents (if it is missing in user's data dir or manually forced)
             # Failed copies are only fatal for mandatory data files
             try:
-                self.install_pkgdata(datafile)
+                self.install_pkgdata(datafile, force=force_install)
             except FileNotFoundError as err:
                 readable_file = False
                 if mandatory:
@@ -95,7 +104,7 @@ class DataFile:
 
     def install_pkgdata(self, filename, force=False):
         """
-        If datafile is missing in user's data dir, copy the corresponding datafile from the package's data
+        Copy the corresponding datafile from the package's data, if it is missing in user's data or manually forced
         Package data files can be located inside the 'data' folder of the package or in '/etc' (self.sys_data_dirs)
         - filename: (string) name of the data file
         - force: (boolean) copy data file from package regardless of existence of user's data
@@ -115,11 +124,11 @@ class DataFile:
         user_data_dir = appdirs.user_data_dir(DATA_DIR)
         make_dir(user_data_dir)
 
-        # Copy data file to user's data dir (if missing)
+        # Copy data file to user's data dir (if missing or forced)
         file_copied = copy_file(pkg_data, self.datafile, force=force)
 
         if file_copied:
-            self.log.warning("Installed missing data file '%s' into '%s'", pkg_data, user_data_dir)
+            self.log.warning("Installed data file '%s' into '%s'", pkg_data, user_data_dir)
         elif file_copied == False:
             errmsg = f"Data file not found: {filename}"
             raise FileNotFoundError(errmsg)

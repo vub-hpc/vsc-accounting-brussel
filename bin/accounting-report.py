@@ -63,6 +63,7 @@ from vsc.accounting.config.parser import MainConf
 from vsc.accounting.data.parser import DataFile
 from vsc.accounting.counters import ComputeTimeCount
 
+import vsc.accounting.data.parser as dataparser
 import vsc.accounting.reports as report
 
 logger = fancylogger.getLogger()
@@ -105,6 +106,13 @@ def main():
         '-d', dest='debug', help='use debug log level', required=False, action='store_true'
     )
     cli_core.add_argument(
+        '-i',
+        dest='force_install',
+        help='force (re)installation of any data files needed from package resources',
+        required=False,
+        action='store_true',
+    )
+    cli_core.add_argument(
         '-c',
         dest='config_file',
         help='path to configuration file (default: ~/.config/vsc-accounting/vsc-accouning.ini)',
@@ -121,6 +129,10 @@ def main():
 
     # Load configuration
     MainConf.load(cli_core_args.config_file)
+
+    # Enforce (re)installation of data files
+    if cli_core_args.force_install:
+        dataparser.FORCE_INSTALL = True
 
     # Read nodegroup specs and default values
     try:
