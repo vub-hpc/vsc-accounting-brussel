@@ -98,8 +98,12 @@ def valid_isodate(strdate):
 def main():
     # Core command line arguments
     cli_core = argparse.ArgumentParser(prog='accounting-report', add_help=False)
-    cli_core.add_argument('-v', '--version', action='version', version='%(prog)s from vsc-accounting-brussel v{}'.format(VERSION))
-    cli_core.add_argument('-d', dest='debug', help='use debug log level', required=False, action='store_true')
+    cli_core.add_argument(
+        '-v', '--version', action='version', version='%(prog)s from vsc-accounting-brussel v{}'.format(VERSION)
+    )
+    cli_core.add_argument(
+        '-d', dest='debug', help='use debug log level', required=False, action='store_true'
+    )
     cli_core.add_argument(
         '-c',
         dest='config_file',
@@ -160,7 +164,6 @@ def main():
         dest='report_format',
         help='format of the report document (default: SVG)',
         choices=['html', 'pdf', 'png', 'svg'],
-        nargs='?',
         default='svg',
         required=False,
     )
@@ -174,6 +177,14 @@ def main():
         default=None,
         required=False,
         type=valid_dirpath,
+    )
+    cli.add_argument(
+        '-u',
+        dest="compute_units",
+        help='compute time units (default: corehours)',
+        choices=['corehours', 'coredays'],
+        default='corehours',
+        required=False,
     )
     cli.add_argument(
         '-n',
@@ -229,7 +240,9 @@ def main():
     nodegroup_list = list(set(cli_args.node_groups))  # go through a set to remove duplicates
 
     # Account compute time on each node group in the requested period
-    ComputeTime = ComputeTimeCount(cli_args.start_date, cli_args.end_date, date_offset)
+    ComputeTime = ComputeTimeCount(
+        cli_args.start_date, cli_args.end_date, date_offset, compute_units=cli_args.compute_units
+    )
 
     for ng in nodegroup_list:
         logger.info("Processing jobs on %s nodes...", ng)

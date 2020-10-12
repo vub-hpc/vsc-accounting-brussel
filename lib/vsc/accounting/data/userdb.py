@@ -83,7 +83,6 @@ class UserDB:
         except KeyError as err:
             error_exit(self.log, err)
 
-
         # Load all user data base from local cache
         self.cache = self.load_db_cache()
 
