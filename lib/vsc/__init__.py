@@ -1,5 +1,5 @@
 ##
-# Copyright 2019-2020 Vrije Universiteit Brussel
+# Copyright 2020-2020 Vrije Universiteit Brussel
 #
 # This file is part of vsc-accounting-brussel,
 # originally created by the HPC team of Vrij Universiteit Brussel (http://hpc.vub.be),
