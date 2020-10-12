@@ -42,6 +42,7 @@ PACKAGE = {
     'version': CONSTANTS["VERSION"],
     'author': [ad],
     'maintainer': [ad],
+    'python_requires': '~=3.6',
     'setup_requires': [
         'vsc-install >= 0.15.15',
     ],
