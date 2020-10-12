@@ -308,7 +308,7 @@ class ComputeTimeCount:
             for pid, completed_counter in enumerate(futures.as_completed(counter_pool)):
                 try:
                     data_batch = completed_counter.result()
-                except (futures.BrokenExecutor, futures.process.BrokenProcessPool) as err:
+                except futures.process.BrokenProcessPool as err:
                     error_exit(self.log, f"'{nodegroup}' process pool executor of compute/jobs counters failed")
                 except futures.CancelledError as err:
                     # Child processes will be cancelled if any ends in error. Ignore error.
