@@ -40,6 +40,8 @@ from vsc.utils import fancylogger
 from vsc.accounting.filetools import make_dir, copy_file
 from vsc.accounting.exit import error_exit
 
+DATA_DIR = 'vsc-accounting'
+
 
 class DataFile:
     """
@@ -50,79 +52,93 @@ class DataFile:
 
     def __init__(self, datafile, mandatory=True):
         """
-        Set the location of the data file, copy it if it does not exist and read its contents
+        Determine location of data file and read its contents
+        Data files from package resources will be copied to user's data dir if needed
         - datafile: (string) name of the data file or full path to data file
-        - mandatory: (boolean) mandatory files must already exist in user's data dir or be copied from package
+        - mandatory: (boolean) mandatory files must already exist in user's data dir (or be installed)
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
+
+        # Define paths holding package data files by order of preference
+        # The 'data' folder in the package resources is set as a fallback location
+        self.sys_data_dirs = (
+            f'/etc/{DATA_DIR}',
+            '/etc',
+        )
 
         datafile = os.path.expanduser(datafile)
 
         if os.path.isabs(datafile):
-            # Directly read from absolute path
-            self.datafile = {'path': datafile}
-            # By default try to read file from absolute path
-            self.datafile.update({'readable': True})
+            # Directly read data from absolute path
+            self.datafile = datafile
+            readable_file = True
         else:
             # Use datafile in user data directory
-            self.datafile = {
-                'name': datafile,
-                'dir': appdirs.user_data_dir('vsc-accounting'),
-            }
-            self.datafile.update({'path': os.path.join(self.datafile['dir'], self.datafile['name'])})
-
+            self.datafile = os.path.join(appdirs.user_data_dir(DATA_DIR), datafile)
             # Copy data file from package contents (if it is missing in user's data dir)
             # Failed copies are only fatal for mandatory data files
             try:
-                self.copy_pkgdata()
+                self.install_pkgdata(datafile)
             except FileNotFoundError as err:
-                self.datafile.update({'readable': False})
+                readable_file = False
                 if mandatory:
                     error_exit(self.log, err)
             else:
-                self.datafile.update({'readable': True})
+                readable_file = True
 
-        # Read contents of data file
-        if self.datafile['readable']:
+        if readable_file:
+            # Read contents of data file
             try:
                 self.read_data()
             except ValueError as err:
                 error_exit(self.log, err)
 
-    def copy_pkgdata(self, force=False):
+    def install_pkgdata(self, filename, force=False):
         """
-        If datafile is missing, copy the corresponding datafile from the package's data
-        Package data files are located inside the 'data' folder of the package
+        If datafile is missing in user's data dir, copy the corresponding datafile from the package's data
+        Package data files can be located inside the 'data' folder of the package or in '/etc' (self.sys_data_dirs)
+        - filename: (string) name of the data file
         - force: (boolean) copy data file from package regardless of existence of user's data
         """
-        # Make own dir in user's data dir
-        make_dir(self.datafile['dir'])
+        # Locate existing data file
+        tentative_sources = [os.path.join(pkgdir, filename) for pkgdir in self.sys_data_dirs]
+        existing_sources = [data_path for data_path in tentative_sources if os.path.isfile(data_path)]
 
-        # Copy data file to user's data dir
-        pkgdata = pkg_resources.resource_filename(__name__, self.datafile['name'])
-        file_copied = copy_file(pkgdata, self.datafile['path'], force=force)
+        if len(existing_sources) > 0:
+            # Install data file from top hit
+            pkg_data = existing_sources[0]
+        else:
+            # Install data file from package resources
+            pkg_data = pkg_resources.resource_filename(__name__, filename)
+
+        # Make own dir in user's data dir
+        user_data_dir = appdirs.user_data_dir(DATA_DIR)
+        make_dir(user_data_dir)
+
+        # Copy data file to user's data dir (if missing)
+        file_copied = copy_file(pkg_data, self.datafile, force=force)
 
         if file_copied:
-            self.log.warning("Created user data file '%s' from package file", self.datafile['path'])
+            self.log.warning("Installed missing data file '%s' into '%s'", pkg_data, user_data_dir)
         elif file_copied == False:
-            errmsg = f"Data file not found: {self.datafile['path']}"
+            errmsg = f"Data file not found: {filename}"
             raise FileNotFoundError(errmsg)
 
-        return file_copied
+        return True
 
     def read_json(self):
         """
         Return contents of JSON file
         """
         try:
-            with open(self.datafile['path'], 'r') as jsonfile:
+            with open(self.datafile, 'r') as jsonfile:
                 jsondata = json.load(jsonfile)
         except FileNotFoundError as err:
-            error_exit(self.log, f"Data file not found: {self.datafile['path']}")
+            error_exit(self.log, f"Data file not found: {self.datafile}")
         except json.decoder.JSONDecodeError as err:
-            error_exit(self.log, f"Data file in JSON format is malformed: {self.datafile['path']}")
+            error_exit(self.log, f"Data file in JSON format is malformed: {self.datafile}")
         else:
-            self.log.debug("Data read from file: %s", self.datafile['path'])
+            self.log.debug("Data read from file: %s", self.datafile)
             return jsondata
 
     def read_html(self):
@@ -130,28 +146,28 @@ class DataFile:
         Return contents of HTML file
         """
         try:
-            with open(self.datafile['path'], 'r') as htmlfile:
+            with open(self.datafile, 'r') as htmlfile:
                 htmldump = htmlfile.read()
                 htmldata = BeautifulSoup(htmldump, 'lxml')
         # There are no other exeptions to check, bs4 will make HTML compliant anything that you throw at it
         except FileNotFoundError as err:
-            error_exit(self.log, f"Data file not found: {self.datafile['path']}")
+            error_exit(self.log, f"Data file not found: {self.datafile}")
         else:
-            self.log.debug("Data read from file: %s", self.datafile['path'])
+            self.log.debug("Data read from file: %s", self.datafile)
             return htmldata
 
     def read_data(self):
         """
         Read data file with appropriate parser depending on file extension
         """
-        file_ext = self.datafile['path'].split('.')[-1].lower()
+        file_ext = self.datafile.split('.')[-1].lower()
 
         if file_ext == 'json':
             self.contents = self.read_json()
         elif file_ext == 'html':
             self.contents = self.read_html()
         else:
-            errmsg = f"Unknown data file format: {self.datafile['path']}"
+            errmsg = f"Unknown data file format: {self.datafile}"
             raise ValueError(errmsg)
 
     def save_json(self):
@@ -159,22 +175,22 @@ class DataFile:
         Save contents to data file in JSON format
         """
         try:
-            with open(self.datafile['path'], 'w', encoding='utf8') as jsonfile:
+            with open(self.datafile, 'w', encoding='utf8') as jsonfile:
                 json.dump(self.contents, jsonfile, indent=4, ensure_ascii=False)
         except FileNotFoundError as err:
-            error_exit(self.log, f"Data file not found: {self.datafile['path']}")
+            error_exit(self.log, f"Data file not found: {self.datafile}")
         else:
-            self.log.debug("Data saved to file: %s", self.datafile['path'])
+            self.log.debug("Data saved to file: %s", self.datafile)
             return True
 
     def save_data(self):
         """
         Save data file with appropriate parser depending on file extension
         """
-        file_ext = self.datafile['path'].split('.')[-1].lower()
+        file_ext = self.datafile.split('.')[-1].lower()
 
         if file_ext == 'json':
             self.contents = self.save_json()
         else:
-            errmsg = f"Unknown data file format: {self.datafile['path']}"
+            errmsg = f"Unknown data file format: {self.datafile}"
             raise ValueError(errmsg)

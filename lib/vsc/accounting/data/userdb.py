@@ -117,9 +117,9 @@ class UserDB:
         cache = DataFile(cache_file, mandatory=False)
 
         if hasattr(cache, 'contents'):
-            self.log.debug(f"Data base of users read from local cache: {cache.datafile['path']}")
+            self.log.debug(f"Data base of users populated from local cache")
         else:
-            self.log.warning(f"Data base of users not found in local cache: {cache.datafile['path']}")
+            self.log.warning(f"Data base of users not found in local cache: {cache.datafile}")
             cache.contents = self.init_db_cache()
 
         return cache
