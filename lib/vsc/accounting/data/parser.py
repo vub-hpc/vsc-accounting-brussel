@@ -159,8 +159,8 @@ class DataFile:
         Save contents to data file in JSON format
         """
         try:
-            with open(self.datafile['path'], 'w') as jsonfile:
-                json.dump(self.contents, jsonfile, indent=4)
+            with open(self.datafile['path'], 'w', encoding='utf8') as jsonfile:
+                json.dump(self.contents, jsonfile, indent=4, ensure_ascii=False)
         except FileNotFoundError as err:
             error_exit(self.log, f"Data file not found: {self.datafile['path']}")
         else:

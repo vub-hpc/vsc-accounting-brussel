@@ -57,14 +57,13 @@ import argparse
 from datetime import date, datetime
 
 from vsc.utils import fancylogger
+from vsc.accounting.version import VERSION
 from vsc.accounting.exit import error_exit
 from vsc.accounting.config.parser import MainConf
 from vsc.accounting.data.parser import DataFile
 from vsc.accounting.counters import ComputeTimeCount
 
 import vsc.accounting.reports as report
-
-VERSION = '1.0.0'
 
 logger = fancylogger.getLogger()
 fancylogger.logToScreen(True)
@@ -97,6 +96,32 @@ def valid_isodate(strdate):
 
 
 def main():
+    # Core command line arguments
+    cli_core = argparse.ArgumentParser(prog='accounting-report', add_help=False)
+    cli_core.add_argument(
+        '-v', '--version', action='version', version='%(prog)s from vsc-accounting-brussel v{}'.format(VERSION)
+    )
+    cli_core.add_argument(
+        '-d', dest='debug', help='use debug log level', required=False, action='store_true'
+    )
+    cli_core.add_argument(
+        '-c',
+        dest='config_file',
+        help='path to configuration file (default: ~/.config/vsc-accounting/vsc-accouning.ini)',
+        default='vsc-accounting.ini',
+        required=False,
+    )
+
+    cli_core_args, cli_extra_args = cli_core.parse_known_args()
+
+    # Debug level logs
+    if cli_core_args.debug:
+        fancylogger.setLogLevelDebug()
+        logger.debug("Switched logging to debug verbosity")
+
+    # Load configuration
+    MainConf.load(cli_core_args.config_file)
+
     # Read nodegroup specs and default values
     try:
         nodegroups_spec = MainConf.get('nodegroups', 'specsheet')
@@ -106,14 +131,10 @@ def main():
     else:
         nodegroups = DataFile(nodegroups_spec).contents
 
-    # Set command line arguments
+    # Reporting command line arguments
     cli = argparse.ArgumentParser(
-        prog='accounting-report',
         description='Generate accurate accounting reports about the computational resources used in an HPC cluster',
-    )
-    cli.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(VERSION))
-    cli.add_argument(
-        '-d', dest='debug', help='use debug log level', required=False, action='store_true',
+        parents=[cli_core],
     )
     cli.add_argument(
         '-s',
@@ -143,12 +164,11 @@ def main():
         dest='report_format',
         help='format of the report document (default: SVG)',
         choices=['html', 'pdf', 'png', 'svg'],
-        nargs='?',
         default='svg',
         required=False,
     )
     cli.add_argument(
-        '-c', dest='csv', help='write report data in a CSV file', required=False, action='store_true',
+        '-t', dest='csv', help='write report data table in a CSV file', required=False, action='store_true',
     )
     cli.add_argument(
         '-o',
@@ -157,6 +177,14 @@ def main():
         default=None,
         required=False,
         type=valid_dirpath,
+    )
+    cli.add_argument(
+        '-u',
+        dest="compute_units",
+        help='compute time units (default: corehours)',
+        choices=['corehours', 'coredays'],
+        default='corehours',
+        required=False,
     )
     cli.add_argument(
         '-n',
@@ -197,11 +225,6 @@ def main():
     # Read command line arguments
     cli_args = cli.parse_args()
 
-    # Debug level logs
-    if cli_args.debug:
-        fancylogger.setLogLevelDebug()
-        logger.debug("Switched logging to debug verbosity")
-
     # Set absolute path of output directory
     if cli_args.output_dir:
         basedir = os.path.abspath(os.path.expanduser(cli_args.output_dir))
@@ -217,7 +240,9 @@ def main():
     nodegroup_list = list(set(cli_args.node_groups))  # go through a set to remove duplicates
 
     # Account compute time on each node group in the requested period
-    ComputeTime = ComputeTimeCount(cli_args.start_date, cli_args.end_date, date_offset)
+    ComputeTime = ComputeTimeCount(
+        cli_args.start_date, cli_args.end_date, date_offset, compute_units=cli_args.compute_units
+    )
 
     for ng in nodegroup_list:
         logger.info("Processing jobs on %s nodes...", ng)

@@ -13,6 +13,7 @@ sdist/
 *.egg
 
 *~
+*.sw[op]
 setup.cfg
 
 # Installer logs

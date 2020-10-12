@@ -60,11 +60,12 @@ class ComputeTimeCount:
     - UserJobs, FieldJobs: running jobs of each entity over time per group of nodes
     """
 
-    def __init__(self, date_start, date_end, date_freq):
+    def __init__(self, date_start, date_end, date_freq, compute_units='corehours'):
         """
         Inititalize data frames for the provided period of time
         - date_start, date_end: (date) limits of the period of time
         - date_freq: (pd.timedelta) string defining the frequency of time entries
+        - compute_units: (string) units used to account compute time
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
@@ -76,6 +77,17 @@ class ComputeTimeCount:
             self.dates = self.set_dates(date_start, date_end, date_freq)
         except ValueError as err:
             error_exit(self.log, err)
+
+        # Set compute units: all units are based on compute_units_day()
+        known_compute_units = {
+            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'factor': 3600},
+            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'factor': 86400},
+        }
+        try:
+            self.compute_units = known_compute_units[compute_units]
+        except KeyError as err:
+            errmsg = f"Unknown compute units {compute_units}: {err}"
+            error_exit(self.log, errmsg)
 
         # Set number of procs for parallel processing from configuration file
         try:
@@ -135,6 +147,24 @@ class ComputeTimeCount:
             self.log.info("Time resolution: %s days", day_freq)
 
             return idx_dates
+
+    def compute_units_day(self, job_time, used_cores, days):
+        """
+        Returns compute time per day using the units defined in self.compute_units
+        Compute units are normalized in days to have a common reference between different time resolutions (date_freq)
+        Warning: this function is structured to work with individual variables, pd.Series or pd.DataFrames containing
+                 the following numerical parameters
+        - job_time: (float) real used time in seconds
+        - used_cores: (int) number of cores used during job_time
+        - days: (int) number of days
+        """
+        try:
+            total_compute_units = job_time * used_cores / self.compute_units['factor']
+            daily_compute_units = total_compute_units / days
+        except ValueError as err:
+            error_exit(self.log, f"Compute time unit conversion to {self.compute_units['name']} failed: {err}")
+        else:
+            return daily_compute_units
 
     def add_nodegroup(self, nodegroup, cores, hostlist):
         """
@@ -254,13 +284,9 @@ class ComputeTimeCount:
             # Check which hosts were active from start to end of this day
             for host in self.NG[nodegroup]:
                 if host['start'] <= curr_day and host['end'] >= next_day:
-                    # Update capacity with this active node group
-                    # Units are days of compute time
-                    compute_capacity += host['cores'] * host['n']
+                    # Update capacity with this active node group. Add full day of capacity (86400 s)
+                    compute_capacity += self.compute_units_day(86400, host['cores'] * host['n'], period_span.days)
             curr_day = next_day
-
-        # Normalize compute capacity to days of compute time per day
-        compute_capacity /= period_span.days
 
         return {'date': period_start, 'nodegroup': nodegroup, 'capacity': compute_capacity}
 
@@ -335,14 +361,14 @@ class ComputeTimeCount:
         }
 
         # Report hits and duplicates in this period of time
-        period_msg = f"{period_span.days} days from {period_start.strftime(self.dateformat)}"
+        period_msg = f"{period_span.days}d from {period_start.strftime(self.dateformat)}"
         info_msg = f"'{nodegroup}' {period_msg}: {running_jobs:5d} hits {unique_users:5d} users"
         if duplicate_jobs > 0:
             info_msg += f" ({duplicate_jobs} duplicates removed)"
         self.log.info(info_msg)
 
-        # Normalize global counters to units per day
-        for counter in ['compute_time', 'running_jobs', 'unique_users']:
+        # Normalize global non-compute counters to units per day (as we do for compute time)
+        for counter in ['running_jobs', 'unique_users']:
             global_counters[counter] /= period_span.days
 
         self.log.debug("'%s' period [%s] normalized global counters: %s", nodegroup, query_id, global_counters)
@@ -355,10 +381,12 @@ class ComputeTimeCount:
                 'jobs': jobs.groupby('username').count(),
             }
 
+            # Normalize counter of jobs to units per day (as we do for compute time)
+            peruser_counters['jobs']['compute'] /= period_span.days
+
             # Generate list of dicts with one dict per user with its counters and indexes
             # [{username: counter, date: date, nodegroup: nodegroup}, ...]
             for prop, users_counter in peruser_counters.items():
-                users_counter['compute'] /= period_span.days  # normalize to units per day
                 users_entry = users_counter.transpose().to_dict('index')['compute']
                 users_entry.update({'date': period_start, 'nodegroup': nodegroup})
                 peruser_counters[prop] = users_entry
@@ -382,6 +410,7 @@ class ComputeTimeCount:
         """
         # Define length of current period
         period_end = period_start + period_start.freq
+        period_span = period_end - period_start
 
         # Connect to ElasticSearch
         ES = ElasticTorque(query_id)
@@ -418,18 +447,14 @@ class ComputeTimeCount:
             axis=1,  # apply row wise
             result_type='reduce',  # return series if possible
         )
-        ES.hits['compute'] = ES.hits['compute'] / 86400  # convert seconds to days of compute time
-        ES.hits['compute'] = ES.hits['compute'] * ES.hits['cores']
+        # Convert compute time to units defined in self.compute_units
+        ES.hits['compute'] = self.compute_units_day(ES.hits['compute'], ES.hits['cores'], period_span.days)
 
         # Select username and compute time for each job
         jobs = pd.DataFrame(columns=['jobid', 'username', 'compute'])
         jobs = jobs.append(ES.hits.loc[:, ES.hits.columns.intersection(jobs.columns)], sort=False)
         jobs = jobs.set_index('jobid')
         self.log.debug("'%s' ES query [%s] processed %s jobs", nodegroup, query_id, len(jobs))
-
-        # All ES data processed, close connection and free memory
-        del ES
-        self.log.debug("'%s' ES query [%s] deleted", nodegroup, query_id)
 
         return jobs
 
@@ -625,7 +650,7 @@ class ComputeTimeCount:
 
     def unpack_indexes(self, target):
         """
-        Returns dict with regular indexes of unique elements in the index or multiindex of target
+        Returns dict with regular indexes of unique elements in the index or multiindex of target pd.DataFrame
         - target: (string) name of object
         """
         data_obj = self.getattr(target)

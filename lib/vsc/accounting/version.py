@@ -24,11 +24,9 @@
 #
 ##
 """
-Initialize vsc package.
-The vsc namespace is used in different folders along the system
-so explicitly declare this is also the vsc namespace.
+Version of vsc.accounting
 
-@author: Andy Georges (Ghent University)
+@author: Alex Domingo (Vrije Universiteit Brussel)
 """
-import pkg_resources
-pkg_resources.declare_namespace(__name__)
+
+VERSION = '1.0.3'

@@ -38,6 +38,8 @@ from vsc.utils import fancylogger
 from vsc.accounting.filetools import make_dir, copy_file
 from vsc.accounting.exit import error_exit
 
+CONFIG_DIR = 'vsc-accounting'
+
 
 class ConfigFile:
     """
@@ -45,22 +47,26 @@ class ConfigFile:
     Generate default config file in user's config dir if it does not exist
     """
 
-    def __init__(self, filename):
+    def __init__(self):
         """
-        Set the location of the config file, create it if it does not exist and read its contents
-        - filename: (string) name of the config file
+        Initialize logger and default settings
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
-        # Config file paths
-        self.usercfg = {
-            'name': filename,
-            'dir': appdirs.user_config_dir('vsc-accounting'),
-        }
-        self.usercfg.update({'path': os.path.join(self.usercfg['dir'], self.usercfg['name'])})
+        # Directories that can contain config files, ordered by preference
+        self.default_config_dirs = (
+            appdirs.user_config_dir(CONFIG_DIR),
+            f'/etc/{CONFIG_DIR}',
+            '/etc',
+        )
 
-        # Generate a default config file if file is missing in user's config dir
-        self.copy_pkgdefault()
+    def load(self, configfile):
+        """
+        Load contents of configuration file
+        - configfile: (string) name or path of the config file
+        """
+        # Determine location of config file
+        self.locate_config(configfile)
 
         # Read contents of config file
         self.opts = configparser.ConfigParser()
@@ -69,21 +75,53 @@ class ConfigFile:
         except FileNotFoundError as err:
             error_exit(self.log, err)
 
+        return self
+
+    def locate_config(self, configfile):
+        """
+        Determine location of config file, create it if it does not exist
+        - configfile: (string) name of the config file
+        """
+        if os.path.isabs(configfile):
+            # Use config file from absolute path
+            self.usercfg = {
+                'name': os.path.basename(configfile),
+                'path': configfile,
+            }
+        elif configfile:
+            # Locate config file and install it if necessary
+            self.usercfg = {'name': configfile}
+
+            # Check existence of config file in default directories
+            tentative_configs = [os.path.join(confdir, self.usercfg['name']) for confdir in self.default_config_dirs]
+            existing_configs = [config_path for config_path in tentative_configs if os.path.isfile(config_path)]
+
+            if len(existing_configs) > 0:
+                # Use config file from top hit
+                self.usercfg.update({'path': existing_configs[0]})
+                self.log.debug("Found existing configuration file: %s", self.usercfg['path'])
+            else:
+                # Install default config file in user's dir if config file is not found
+                self.usercfg.update({'path': os.path.join(appdirs.user_config_dir(CONFIG_DIR), self.usercfg['name'])})
+                self.copy_pkgdefault()
+        else:
+            error_exit(self.log, "Name of configuration file is needed")
+
     def copy_pkgdefault(self, force=False):
         """
-        If usercfg path is missing, copy the corresponding sample from the project's package
+        Copy the corresponding sample from the project's package to destination config dir
         Sample config files are located inside the 'config' folder of the package
         - force: (boolean) copy sample regardless of existence of user's config
         """
         # Make own dir in user's config dir
-        make_dir(self.usercfg['dir'])
+        make_dir(os.path.dirname(self.usercfg['path']))
 
         # Copy sample file to user's config dir
-        pkgcfg = pkg_resources.resource_filename(__name__, self.usercfg['name'])
-        file_copied = copy_file(pkgcfg, self.usercfg['path'], force=force)
+        pkgcfg_path = pkg_resources.resource_filename(__name__, self.usercfg['name'])
+        file_copied = copy_file(pkgcfg_path, self.usercfg['path'], force=force)
 
         if file_copied:
-            self.log.warning("Created user configuration file '%s' from sample file", self.usercfg['path'])
+            self.log.warning("Installed sample configuration file into '%s'", self.usercfg['path'])
 
     def get(self, section, option, fallback=None, mandatory=True):
         """
@@ -104,6 +142,8 @@ class ConfigFile:
         else:
             errmsg = f"Configuration option {section} > {option} not found"
             raise KeyError(errmsg)
+
+        return self
 
     def get_digit(self, section, option, fallback=0, mandatory=True):
         """
@@ -141,4 +181,4 @@ class ConfigFile:
             raise FileNotFoundError(errmsg)
 
 
-MainConf = ConfigFile('vsc-accounting.ini')
+MainConf = ConfigFile()

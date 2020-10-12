@@ -33,17 +33,23 @@ vsc-accounting-brussel base distribution setup.py
 import vsc.install.shared_setup as shared_setup
 from vsc.install.shared_setup import ad
 
+# Read global version from version.py
+CONSTANTS = {}
+with open("lib/vsc/accounting/version.py") as fp:
+    exec(fp.read(), CONSTANTS)
+
 PACKAGE = {
-    'version': '1.0.0',
+    'version': CONSTANTS["VERSION"],
     'author': [ad],
     'maintainer': [ad],
+    'python_requires': '~=3.6',
     'setup_requires': [
         'vsc-install >= 0.15.15',
     ],
     'install_requires': [
         'vsc-base >= 3.0.1',
         'vsc-utils >= 2.1.0',
-        'vsc-config >= 3.0.1',
+        'vsc-config >= 3.3.4',
         'vsc-accountpage-clients >= 2.1.1',
         # needed to manage config files
         'appdirs',
@@ -62,9 +68,11 @@ PACKAGE = {
     'package_data': {
         "vsc.accounting": [
             "config/vsc-accounting.ini",
+            "config/vsc-access.ini",
+            "data/default-nodegroup.json",
+            "data/example-nodegroups.json",
             "data/html_main_style.html",
             "data/html_table_style.json",
-            "data/example-nodegroups.json",
         ],
     },
     'zip_safe': False,

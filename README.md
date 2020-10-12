@@ -30,20 +30,6 @@ Infrastructure
 * Access to ELK server with the logstash of your job scheduler
 * Access to VSC Account page (optional)
 
-## Example Use
-
-The following example generates 3 accounting reports (`-c`):
-* **compute-percent**: total use of compute time (in percentage)
-* **running-jobs**: total amount of running jobs
-* **top-users-percent**: ranking of users by percentage of compute time
-* **top-sites-percent**: ranking of research sites by percentage of compute time
-
-Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`), only consider two specific groups of nodes in the cluster (`-n node-group1 node-group2`) and will be made in HTML format (`-f html`):
-
-```bash
-$ accounting-report -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node-group1 node-group2 -c compute-percent running-jobs top-users-percent top-sites-percent
-```
-
 ## Data Sources
 
 ### ElasticSearch
@@ -51,7 +37,7 @@ $ accounting-report -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node
 The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
 
 Supported resource managers:
-* Torque
+* **Torque**: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
 
 ### User account data
 
@@ -61,9 +47,9 @@ User accounts identified as VSC accounts will be requested from teh VSC Account 
 
 ## Data Selection
 
-Accounting is limited to a defined time period. At least the initial date (`-s`) is required to generate any of the accounting reports. By default, the accounting is computed with a resolution of days. It is also possible to manually request for lower resolutions (`-r`) and generate weekly, monthly, quaterly or yearly stats, as long as the defined time period can at least cover one time cycle in the requested resolution.
+Accounting is limited to a defined period of time. At least the initial date (`-s`) is required to generate any of the accounting reports. By default, the accounting is computed with a resolution of days. It is also possible to manually request for lower resolutions (`-r`) and generate weekly, monthly, quaterly or yearly stats, as long as the defined time period can at least cover one time cycle in the requested resolution.
 
-It is necessary to define the compute characteristics of the nodes in the cluster and how they are grouped. This information can be provided in a JSON file through the configuration parameter `nodegroups/specsheet`. Please check the provided example file `example-nodegroups.json` for details on its structure. If the definition of the cluster contains multiple node groups, it is possible to request the accounting stats on specific node groups (`-n`).
+It is necessary to describe the compute characteristics of the nodes in the cluster and how they should be grouped. This information can be provided in a JSON file through the configuration parameter `nodegroups/specsheet`. The default specsheet file `default-nodegroup.json` defines a single group of nodes that will match any hostname in the cluster. Please check the provided file `example-nodegroups.json` for a more complex example with multiple groups of nodes. If multiple node groups are defined, it is possible to request the accounting stats on specific node groups (`-n`).
 
 Attributes of each nodegroup in the spec file:
 * Color: color name or hex value (used in some plots)
@@ -74,11 +60,45 @@ Attributes of each nodegroup in the spec file:
     * start: first date in production (date in ISO format: `YYYY-MM-DD`)
     * end: last date in production (date in ISO format: `YYYY-MM-DD`)
 
+Example file `example-nodegroups.json`:
+```json
+{
+    "node-group1": {
+        "color": "blue",
+        "cores": 40,
+        "hosts": [
+            {
+                "n": 10,
+                "regex": "node00[0-9]",
+                "start": "2018-01-01"
+            }
+        ]
+    },
+    "node-group2": {
+        "color": "red",
+        "cores": 16,
+        "hosts": [
+            {
+                "n": 20,
+                "regex": "node0[12][0-9]",
+                "start": "2018-01-01",
+                "end": "2018-08-09"
+            },
+            {
+                "n": 10,
+                "regex": "node03[0-9]",
+                "start": "2018-01-01",
+                "end": "2018-02-02"
+            }
+        ]
+    }
+```
+
 ## Accounting Reports
 
 Reports of the accounting stats can be generated in 3 formats:
 * rendered as plots or charts: choose SVG, PNG, JPG image format (`-f`)
-* rendered as plots/charts and including the resulting data in a separate CSV file (`-c`)
+* rendered as plots/charts and including the resulting data in a separate CSV file (`-t`)
 * in a HTML document containing the plot/chart and related data tables (`-f html`)
 
 The following reports are available:
@@ -101,4 +121,19 @@ The following reports are available:
 * **top-fields-percent**: percentage of compute time used by each research field across selected node groups (plot over time and pie chart)
 * **top-sites**: total compute time used by each research site across selected node groups
 * **top-sites-percent**: percentage of total compute time used by each research site across selected node groups.
+
+## Example
+
+The following example generates 4 accounting reports:
+* **compute-percent**: total use of compute time (in percentage)
+* **running-jobs**: total amount of running jobs
+* **top-users-percent**: ranking of users by percentage of compute time
+* **top-sites-percent**: ranking of research sites by percentage of compute time
+
+```bash
+$ accounting-report compute-percent running-jobs top-users-percent top-sites-percent
+  -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node-group1 node-group2 -t
+```
+
+Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) of two specific groups of nodes in the cluster (`-n node-group1 node-group2`). They will be saved in the folder `general-nodes` in the current working directory (`-o`), in HTML format (`-f html`) and also saving all data tables as CSV files (`-t`).
 
