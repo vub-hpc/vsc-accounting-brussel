@@ -40,7 +40,8 @@ from concurrent import futures
 from datetime import date, datetime
 
 from vsc.utils import fancylogger
-from vsc.accounting.exit import error_exit, cancel_process_pool
+from vsc.accounting.exit import error_exit
+from vsc.accounting.parallel import parallel_exec
 from vsc.accounting.config.parser import MainConf
 from vsc.accounting.elasticsearch import ElasticTorque
 from vsc.accounting.data.userdb import UserDB
@@ -212,7 +213,15 @@ class ComputeTimeCount:
         self.log.debug("'%s' updated %s capacity records", nodegroup, ng_capacity.shape[0])
 
         # Add compute stats of this nodegroup
-        ng_compute = self.parallel_count_computejobsusers(nodegroup, self.dates)
+        ng_compute = parallel_exec(
+            self.count_computejobsusers,  # worker function
+            f"'{nodegroup}' compute/job counter",  # label prefixing log messages
+            ng_index.levels[0],  # stack of items to process
+            nodegroup,  # forwarded to worker function
+            procs=self.max_procs,
+            logger=self.log,
+            peruser=True,  # forwarded to worker function
+        )
         # Serial version
         # ng_compute = [self.count_computejobsusers(n, *dt, peruser=True) for (n, dt) in enumerate(ng_index)]
         self.log.debug("'%s' retrieved %s compute time data records", nodegroup, len(ng_compute))
@@ -290,48 +299,10 @@ class ComputeTimeCount:
 
         return {'date': period_start, 'nodegroup': nodegroup, 'capacity': compute_capacity}
 
-    def parallel_count_computejobsusers(self, nodegroup, period_range):
-        """
-        Execute compute and job counters for the whole time period
-        Counter processing is parallelized using available processors on the machine
-        - nodegroup: (string) name of group of nodes
-        - period_range: (pd.DatetimeIndex) range of dates
-        """
-        computejob_counters = list()
-
-        # Start process pool to execute all counters
-        with futures.ProcessPoolExecutor(max_workers=self.max_procs) as executor:
-            counter_pool = {
-                executor.submit(self.count_computejobsusers, n, dt, nodegroup, peruser=True): (n, dt)
-                for (n, dt) in enumerate(period_range)
-            }
-            for pid, completed_counter in enumerate(futures.as_completed(counter_pool)):
-                try:
-                    data_batch = completed_counter.result()
-                except futures.process.BrokenProcessPool as err:
-                    error_exit(self.log, f"'{nodegroup}' process pool executor of compute/jobs counters failed")
-                except futures.CancelledError as err:
-                    # Child processes will be cancelled if any ends in error. Ignore error.
-                    self.log.debug(f"'{nodegroup}' process [{pid}] to account compute/jobs cancelled successfully")
-                    pass
-                except SystemExit as exit:
-                    if exit.code == 1:
-                        # Child process ended in error. Cancel all remaining processes in the pool.
-                        cancel_process_pool(self.log, counter_pool, pid)
-                        # Abort execution
-                        errmsg = f"'{nodegroup}' accounting of compute/jobs failed. Aborting!"
-                        error_exit(self.log, errmsg)
-                else:
-                    # Add counters to list
-                    computejob_counters.append(data_batch)
-
-        return computejob_counters
-
-    def count_computejobsusers(self, query_id, period_start, nodegroup, peruser=False):
+    def count_computejobsusers(self, period_start, nodegroup, peruser=False):
         """
         Returns dict with global counters on running jobs, unique users and compute time
         Data source is a list of running jobs in the given time period and in the given nodegroup
-        - query_id: (int) arbitrary identification number of the query
         - period_start: (pd.timestamp) start of time interval
         - nodegroup: (string) name of group of nodes
         - peruser: (boolean) return additional dicts with stats per user
@@ -341,6 +312,8 @@ class ComputeTimeCount:
         period_end = period_start + period_start.freq
         period_span = period_end - period_start
 
+        # Generate unique ID for the query
+        query_id = period_start.strftime(self.dateformat)
         # Retrieve jobs from ElasticSearch
         jobs = self.get_joblist_ES(query_id, period_start, nodegroup)
 

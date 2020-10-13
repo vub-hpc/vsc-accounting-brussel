@@ -38,7 +38,8 @@ from urllib.error import HTTPError, URLError
 from vsc.utils import fancylogger
 from vsc.config.base import ANTWERPEN, BRUSSEL, GENT, LEUVEN, INSTITUTE_LONGNAME
 from vsc.accountpage.client import AccountpageClient
-from vsc.accounting.exit import error_exit, cancel_process_pool
+from vsc.accounting.exit import error_exit
+from vsc.accounting.parallel import parallel_exec
 from vsc.accounting.config.parser import MainConf, ConfigFile
 from vsc.accounting.data.parser import DataFile
 
@@ -88,7 +89,19 @@ class UserDB:
 
         # Retrieve account data of requested users
         self.log.info(f"Retrieving {len(self.users)} user account records...")
-        self.records = self.gather_all_records(update_cache=True)
+        requested_records = parallel_exec(
+            self.get_updated_record,  # worker function
+            f"User account retrieval",  # label prefixing log messages
+            self.users,  # stack of items to process
+            procs=self.max_procs,
+            logger=self.log,
+        )
+
+        # Generate dict of user accounts and update cache
+        self.records = dict()
+        for user_record in requested_records:
+            self.records.update(user_record)
+            self.cache.contents['db'].update(user_record)
 
         # Save local cache
         self.cache.save_data()
@@ -238,39 +251,3 @@ class UserDB:
                 self.log.debug(f"[{username}] new user account registered as member of {user_record['site']}")
 
         return {username: user_record}
-
-    def gather_all_records(self, update_cache=False):
-        """
-        Retrieve user account records with up to date information for all users
-        Record processing is parallelized using available processors on the machine
-        - update_cache: (boolean) update user data base cache with new user records
-        """
-        records_db = dict()
-
-        # Start process pool to retrieve all user records
-        with futures.ProcessPoolExecutor(max_workers=self.max_procs) as executor:
-            record_pool = {executor.submit(self.get_updated_record, user): user for user in self.users}
-            for pid, completed_record in enumerate(futures.as_completed(record_pool)):
-                try:
-                    user_record = completed_record.result()
-                except (futures.BrokenExecutor, futures.process.BrokenProcessPool) as err:
-                    error_exit(self.log, f"Process pool executor to retrieve user account records failed")
-                except futures.CancelledError as err:
-                    # Child processes will be cancelled if any ends in error. Ignore error.
-                    self.log.debug(f"Process [{pid}] to retrieve user account record cancelled successfully")
-                    pass
-                except SystemExit as exit:
-                    if exit.code == 1:
-                        # Child process ended in error. Cancel all remaining processes in the pool.
-                        cancel_process_pool(self.log, record_pool, pid)
-                        # Abort execution
-                        errmsg = f"Retrieval of user account records failed. Aborting!"
-                        error_exit(self.log, errmsg)
-                else:
-                    # Update contents of local cache
-                    if update_cache:
-                        self.cache.contents['db'].update(user_record)
-                    # Add record to DB
-                    records_db.update(user_record)
-
-        return records_db
