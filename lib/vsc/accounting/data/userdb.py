@@ -31,7 +31,6 @@ Update user records with data from VSC account page
 @author: Ward Poelmans (Vrije Universiteit Brussel)
 """
 
-from concurrent import futures
 from datetime import date, datetime
 from urllib.error import HTTPError, URLError
 

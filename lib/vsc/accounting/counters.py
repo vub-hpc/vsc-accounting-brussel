@@ -31,12 +31,10 @@ Accounting data processing for vsc.accounting
 @author: Ward Poelmans (Vrije Universiteit Brussel)
 """
 
-
 import os
 import re
 import pandas as pd
 
-from concurrent import futures
 from datetime import date, datetime
 
 from vsc.utils import fancylogger
@@ -45,6 +43,61 @@ from vsc.accounting.parallel import parallel_exec
 from vsc.accounting.config.parser import MainConf
 from vsc.accounting.elasticsearch import ElasticTorque
 from vsc.accounting.data.userdb import UserDB
+
+
+DATE_FORMAT = '%Y-%m-%d'  # Use ISO date format
+
+
+class ComputeUnits:
+    """
+    Supported compute units and methods to convert them
+    """
+
+    def __init__(self, units='corehours'):
+        """
+        Define charcateristics of supported units and set the active one
+        Compute units with 'norm=True' will be normalized to days, this is useful to have units with a common
+        reference independent of time resolutions (date_freq in ComputeTimeCount)
+        - units: (string) selected units used to account compute time
+        """
+        self.log = fancylogger.getLogger(name=self.__class__.__name__)
+
+        self.known_units = {
+            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'factor': 3600, 'norm': True},
+            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'factor': 86400, 'norm': True},
+        }
+
+        self.set_units(units)
+
+    def set_units(self, units):
+        """
+        Change active compute units
+        """
+        try:
+            self.active_units = self.known_units[units]
+        except KeyError as err:
+            errmsg = f"Unknown compute units {units}: {err}"
+            error_exit(self.log, errmsg)
+        else:
+            self.log.debug("Compute units set to '%s'", self.active_units['name'])
+
+    def job_seconds_to_compute(self, job_time, used_cores, days):
+        """
+        Returns compute time per day using the active compute units
+        Warning: this function is structured to work with individual variables, pd.Series or pd.DataFrames that contain
+                 the following numerical parameters
+        - job_time: (float) real used time in seconds
+        - used_cores: (int) number of cores used during job_time
+        - days: (int) number of days (used in normalized units)
+        """
+        try:
+            total_compute_units = job_time * used_cores / self.active_units['factor']
+            if self.active_units['norm']:
+                daily_compute_units = total_compute_units / days
+        except ValueError as err:
+            error_exit(self.log, f"Compute time unit conversion to {self.active_units['name']} failed: {err}")
+        else:
+            return daily_compute_units
 
 
 class ComputeTimeCount:
@@ -70,25 +123,18 @@ class ComputeTimeCount:
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
-        # Use ISO date format
-        self.dateformat = '%Y-%m-%d'
+        # Set global compute units and save them in here
+        ComputeUnits.set_units(compute_units)
+        self.compute_units = ComputeUnits.active_units
+
+        # Use global date format
+        self.dateformat = DATE_FORMAT
 
         # Set range of dates
         try:
             self.dates = self.set_dates(date_start, date_end, date_freq)
         except ValueError as err:
             error_exit(self.log, err)
-
-        # Set compute units: all units are based on compute_units_day()
-        known_compute_units = {
-            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'factor': 3600},
-            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'factor': 86400},
-        }
-        try:
-            self.compute_units = known_compute_units[compute_units]
-        except KeyError as err:
-            errmsg = f"Unknown compute units {compute_units}: {err}"
-            error_exit(self.log, errmsg)
 
         # Set number of procs for parallel processing from configuration file
         try:
@@ -98,7 +144,7 @@ class ComputeTimeCount:
         else:
             self.log.debug("Maximum number of processor set to %s", self.max_procs)
 
-        # Groups of nodes
+        # Specifications of each groups of nodes
         self.NG = dict()
 
         # Index both dates and nodegroups (empty unless nodegroups are added)
@@ -149,24 +195,6 @@ class ComputeTimeCount:
 
             return idx_dates
 
-    def compute_units_day(self, job_time, used_cores, days):
-        """
-        Returns compute time per day using the units defined in self.compute_units
-        Compute units are normalized in days to have a common reference between different time resolutions (date_freq)
-        Warning: this function is structured to work with individual variables, pd.Series or pd.DataFrames containing
-                 the following numerical parameters
-        - job_time: (float) real used time in seconds
-        - used_cores: (int) number of cores used during job_time
-        - days: (int) number of days
-        """
-        try:
-            total_compute_units = job_time * used_cores / self.compute_units['factor']
-            daily_compute_units = total_compute_units / days
-        except ValueError as err:
-            error_exit(self.log, f"Compute time unit conversion to {self.compute_units['name']} failed: {err}")
-        else:
-            return daily_compute_units
-
     def add_nodegroup(self, nodegroup, cores, hostlist):
         """
         Add the definition of a new node group to the accounting of stats
@@ -214,16 +242,16 @@ class ComputeTimeCount:
 
         # Add compute stats of this nodegroup
         ng_compute = parallel_exec(
-            self.count_computejobsusers,  # worker function
+            count_computejobsusers,  # worker function
             f"'{nodegroup}' compute/job counter",  # label prefixing log messages
             ng_index.levels[0],  # stack of items to process
-            nodegroup,  # forwarded to worker function
+            {nodegroup: self.NG[nodegroup]},  # nodegroup_spec: forwarded to worker function
             procs=self.max_procs,
             logger=self.log,
             peruser=True,  # forwarded to worker function
         )
         # Serial version
-        # ng_compute = [self.count_computejobsusers(n, *dt, peruser=True) for (n, dt) in enumerate(ng_index)]
+        # ng_compute = [count_computejobsusers(n, *dt, peruser=True) for (n, dt) in enumerate(ng_index)]
         self.log.debug("'%s' retrieved %s compute time data records", nodegroup, len(ng_compute))
 
         # Global compute stats
@@ -294,192 +322,12 @@ class ComputeTimeCount:
             for host in self.NG[nodegroup]:
                 if host['start'] <= curr_day and host['end'] >= next_day:
                     # Update capacity with this active node group. Add full day of capacity (86400 s)
-                    compute_capacity += self.compute_units_day(86400, host['cores'] * host['n'], period_span.days)
+                    compute_capacity += ComputeUnits.job_seconds_to_compute(
+                        86400, host['cores'] * host['n'], period_span.days
+                    )
             curr_day = next_day
 
         return {'date': period_start, 'nodegroup': nodegroup, 'capacity': compute_capacity}
-
-    def count_computejobsusers(self, period_start, nodegroup, peruser=False):
-        """
-        Returns dict with global counters on running jobs, unique users and compute time
-        Data source is a list of running jobs in the given time period and in the given nodegroup
-        - period_start: (pd.timestamp) start of time interval
-        - nodegroup: (string) name of group of nodes
-        - peruser: (boolean) return additional dicts with stats per user
-
-        """
-        # Define length of current period
-        period_end = period_start + period_start.freq
-        period_span = period_end - period_start
-
-        # Generate unique ID for the query
-        query_id = period_start.strftime(self.dateformat)
-        # Retrieve jobs from ElasticSearch
-        jobs = self.get_joblist_ES(query_id, period_start, nodegroup)
-
-        # Calculate global counters
-        total_jobs = len(jobs.index)
-        jobs = jobs[~jobs.index.duplicated()]  # Remove duplicate jobs based on job ID
-        running_jobs = len(jobs.index)
-        duplicate_jobs = total_jobs - running_jobs
-        compute_time = jobs.loc[:, 'compute'].sum()
-        unique_users = len(jobs.loc[:, 'username'].unique())
-
-        global_counters = {
-            'date': period_start,
-            'nodegroup': nodegroup,
-            'compute_time': compute_time,
-            'running_jobs': running_jobs,
-            'unique_users': unique_users,
-        }
-
-        # Report hits and duplicates in this period of time
-        period_msg = f"{period_span.days}d from {period_start.strftime(self.dateformat)}"
-        info_msg = f"'{nodegroup}' {period_msg}: {running_jobs:5d} hits {unique_users:5d} users"
-        if duplicate_jobs > 0:
-            info_msg += f" ({duplicate_jobs} duplicates removed)"
-        self.log.info(info_msg)
-
-        # Normalize global non-compute counters to units per day (as we do for compute time)
-        for counter in ['running_jobs', 'unique_users']:
-            global_counters[counter] /= period_span.days
-
-        self.log.debug("'%s' period [%s] normalized global counters: %s", nodegroup, query_id, global_counters)
-
-        if peruser:
-            # Agregate stats per user
-            # Counters for compute and jobs are kept in separate dicts to feed separate DataFrames
-            peruser_counters = {
-                'compute': jobs.groupby('username').sum(),
-                'jobs': jobs.groupby('username').count(),
-            }
-
-            # Normalize counter of jobs to units per day (as we do for compute time)
-            peruser_counters['jobs']['compute'] /= period_span.days
-
-            # Generate list of dicts with one dict per user with its counters and indexes
-            # [{username: counter, date: date, nodegroup: nodegroup}, ...]
-            for prop, users_counter in peruser_counters.items():
-                users_entry = users_counter.transpose().to_dict('index')['compute']
-                users_entry.update({'date': period_start, 'nodegroup': nodegroup})
-                peruser_counters[prop] = users_entry
-        else:
-            peruser_counters = None
-
-        # This can be quite verbouse
-        # self.log.debug("'%s' period [%s] normalized per user counters: %s", nodegroup, query_id, peruser_counters)
-
-        return global_counters, peruser_counters
-
-    def get_joblist_ES(self, query_id, period_start, nodegroup):
-        """
-        Returns pd.DataFrame with list of jobs running in the current time period
-        Data is retrieved from ElasticSearch
-        Retrieves 'job end' events on this group of nodes
-        Calculates used compute time by jobs in the period of time
-        - query_id: (int) arbitrary identification number of the query
-        - period_start: (pd.timestamp) start of time interval
-        - nodegroup: (string) name of group of nodes
-        """
-        # Define length of current period
-        period_end = period_start + period_start.freq
-        period_span = period_end - period_start
-
-        # Connect to ElasticSearch
-        ES = ElasticTorque(query_id)
-        # Query indexes with data in this time period
-        ES.set_index(period_start, period_end)
-        # Match active nodes in this time period
-        ES.query_usednodes(period_start, period_end, self.NG[nodegroup])
-        # Filter "job end" events
-        ES.filter_term('action.keyword', 'E')
-        # Set time range of query
-        ES.filter_timerange(period_start, period_end)
-        # Set data fields to retrieve
-        ES.set_source(extra=['jobid', 'username', 'exec_host', 'total_execution_slots'])
-        self.log.debug("'%s' ES query [%s]: %s", nodegroup, query_id, ES.search.to_dict())
-
-        ES.hits = pd.DataFrame([hit.to_dict() for hit in ES.search.scan()])
-        self.log.debug("'%s' ES query [%s] retrieved %s hits", nodegroup, query_id, len(ES.hits))
-
-        # Calculate compute time for each job on this time period
-        ES.hits['compute'] = ES.hits.apply(
-            lambda row: self.job_span(
-                pd.to_datetime(row['start_time'], format=ES.timeformat, errors='coerce'),
-                pd.to_datetime(row['end_time'], format=ES.timeformat, errors='coerce'),
-                period_start,
-                period_end,
-            ),
-            axis=1,  # apply row wise
-            result_type='reduce',  # return series if possible
-        )
-
-        # Account number of cores used by each job
-        ES.hits['cores'] = ES.hits.apply(
-            lambda row: self.corecount(nodegroup, row['exec_host'], row['total_execution_slots']),
-            axis=1,  # apply row wise
-            result_type='reduce',  # return series if possible
-        )
-        # Convert compute time to units defined in self.compute_units
-        ES.hits['compute'] = self.compute_units_day(ES.hits['compute'], ES.hits['cores'], period_span.days)
-
-        # Select username and compute time for each job
-        jobs = pd.DataFrame(columns=['jobid', 'username', 'compute'])
-        jobs = jobs.append(ES.hits.loc[:, ES.hits.columns.intersection(jobs.columns)], sort=False)
-        jobs = jobs.set_index('jobid')
-        self.log.debug("'%s' ES query [%s] processed %s jobs", nodegroup, query_id, len(jobs))
-
-        return jobs
-
-    def job_span(self, job_start, job_end, period_start, period_end):
-        """
-        Returns seconds that job overlaps with period of time
-        - job_start, job_end: (pd.datetime) start and end timestamps of the job
-        - period_start, period_end: (pd.datetime) start and end timestamps of the period
-        """
-        # Pick latest start
-        tstart = max(job_start, period_start)
-        # Pick earliest end
-        tend = min(job_end, period_end)
-
-        tspan = pd.Timedelta(tend - tstart)
-        tspan = tspan.total_seconds()
-
-        return tspan
-
-    def corecount(self, nodegroup, hostlist, totalcores=None):
-        """
-        Returns number of cores of hosts in hostlist that belong to this group of nodes (self.NG)
-        If all hosts match returns totalcores (if provided)
-        Otherwise, it counts the number of cores in matching hosts
-        - nodegroup: (string) name of target group of nodes
-        - hostlist: (list) hostnames allocated to job
-        - totalcores: (integer) number of cores used by job
-        """
-        corespec = list()
-        corecount = 0
-
-        # Take core specification for job hosts matching current node group
-        for node in self.NG[nodegroup]:
-            corespec += [host.split('/')[1] for host in hostlist if re.match(node['regex'], host)]
-
-        if totalcores and len(corespec) == len(hostlist):
-            # All hosts are in this nodegroup
-            corecount = totalcores
-        else:
-            # Count the actual number of cores used in matching hosts
-            # This count should only be needed in a few cases
-            # (e.g. jobs that used non-GPU and GPU nodes simultaneously)
-            coreranges = [numrange for spec in corespec for numrange in spec.split(',')]
-            # add to count first core of all elements in list
-            corecount += len(coreranges)
-            # add to count additional cores in ranges of cores
-            for numrange in coreranges:
-                if '-' in numrange:
-                    corenum = numrange.split('-')
-                    corecount += int(corenum[1]) - int(corenum[0])
-
-        return corecount
 
     def aggregate_account_category(self, sparse_user_data, user_accounts, account_category):
         """
@@ -668,3 +516,226 @@ class ComputeTimeCount:
             error_exit(self.log, errmsg)
         else:
             return True
+
+
+# The following functions fit more naturally into the class ComputeTimeCount.
+# However, in Python 3.6, ProcessPoolExecutor from multiprocessing cannot
+# pickle functions from within classes. Any functions participating in the
+# ProcessPoolExecutor have to be in the top level of the caller's module.
+# Python 3.5, 3.7 and 3.8 do *not* have this restriction and can directly
+# pickle from within the caller's class.
+# See issue: https://bugs.python.org/issue29423
+
+
+def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=None):
+    """
+    Returns dict with global counters on running jobs, unique users and compute time
+    Data source is a list of running jobs in the given time period and in the given nodegroup
+    - period_start: (pd.timestamp) start of time interval
+    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
+      - nodegroup: (string) name of group of nodes
+    - peruser: (boolean) return additional dicts with stats per user
+    - logger: (object) fancylogger object of the caller
+    """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
+    # Unpack nodegroup_spec
+    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+
+    # Define length of current period
+    period_end = period_start + period_start.freq
+    period_span = period_end - period_start
+
+    # Generate unique ID for the query
+    query_id = period_start.strftime(DATE_FORMAT)
+    # Retrieve jobs from ElasticSearch
+    jobs = get_joblist_ES(query_id, period_start, nodegroup_spec, logger=logger)
+
+    # Calculate global counters
+    total_jobs = len(jobs.index)
+    jobs = jobs[~jobs.index.duplicated()]  # Remove duplicate jobs based on job ID
+    running_jobs = len(jobs.index)
+    duplicate_jobs = total_jobs - running_jobs
+    compute_time = jobs.loc[:, 'compute'].sum()
+    unique_users = len(jobs.loc[:, 'username'].unique())
+
+    global_counters = {
+        'date': period_start,
+        'nodegroup': nodegroup,
+        'compute_time': compute_time,
+        'running_jobs': running_jobs,
+        'unique_users': unique_users,
+    }
+
+    # Report hits and duplicates in this period of time
+    period_msg = f"{period_span.days}d from {period_start.strftime(DATE_FORMAT)}"
+    info_msg = f"'{nodegroup}' {period_msg}: {running_jobs:5d} hits {unique_users:5d} users"
+    if duplicate_jobs > 0:
+        info_msg += f" ({duplicate_jobs} duplicates removed)"
+    logger.info(info_msg)
+
+    # Normalize global non-compute counters to units per day if compute units are also normalized
+    if ComputeUnits.active_units['norm']:
+        for counter in ['running_jobs', 'unique_users']:
+            global_counters[counter] /= period_span.days
+
+    logger.debug("'%s' period [%s] global counters: %s", nodegroup, query_id, global_counters)
+
+    if peruser:
+        # Agregate stats per user
+        # Counters for compute and jobs are kept in separate dicts to feed separate DataFrames
+        peruser_counters = {
+            'compute': jobs.groupby('username').sum(),
+            'jobs': jobs.groupby('username').count(),
+        }
+
+        # Normalize counter of jobs to units per day if compute units are also normalized
+        if ComputeUnits.active_units['norm']:
+            peruser_counters['jobs']['compute'] /= period_span.days
+
+        # Generate list of dicts with one dict per user with its counters and indexes
+        # [{username: counter, date: date, nodegroup: nodegroup}, ...]
+        for prop, users_counter in peruser_counters.items():
+            users_entry = users_counter.transpose().to_dict('index')['compute']
+            users_entry.update({'date': period_start, 'nodegroup': nodegroup})
+            peruser_counters[prop] = users_entry
+    else:
+        peruser_counters = None
+
+    # This can be quite verbouse
+    # logger.debug("'%s' period [%s] normalized per user counters: %s", nodegroup, query_id, peruser_counters)
+
+    return global_counters, peruser_counters
+
+
+def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
+    """
+    Returns pd.DataFrame with list of jobs running in the current time period
+    Data is retrieved from ElasticSearch
+    Retrieves 'job end' events on this group of nodes
+    Calculates used compute time by jobs in the period of time
+    - query_id: (int) arbitrary identification number of the query
+    - period_start: (pd.timestamp) start of time interval
+    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+      - nodegroup: (string) name of group of nodes
+      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
+    - logger: (object) fancylogger object of the caller
+    """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
+    # Unpack nodegroup_spec
+    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+
+    # Define length of current period
+    period_end = period_start + period_start.freq
+    period_span = period_end - period_start
+
+    # Connect to ElasticSearch
+    ES = ElasticTorque(query_id)
+    # Query indexes with data in this time period
+    ES.set_index(period_start, period_end)
+    # Match active nodes in this time period
+    ES.query_usednodes(period_start, period_end, ng_hosts)
+    # Filter "job end" events
+    ES.filter_term('action.keyword', 'E')
+    # Set time range of query
+    ES.filter_timerange(period_start, period_end)
+    # Set data fields to retrieve
+    ES.set_source(extra=['jobid', 'username', 'exec_host', 'total_execution_slots'])
+    logger.debug("'%s' ES query [%s]: %s", nodegroup, query_id, ES.search.to_dict())
+
+    ES.hits = pd.DataFrame([hit.to_dict() for hit in ES.search.scan()])
+    logger.debug("'%s' ES query [%s] retrieved %s hits", nodegroup, query_id, len(ES.hits))
+
+    # Calculate compute time for each job on this time period
+    ES.hits['compute'] = ES.hits.apply(
+        lambda row: job_span(
+            pd.to_datetime(row['start_time'], format=ES.timeformat, errors='coerce'),
+            pd.to_datetime(row['end_time'], format=ES.timeformat, errors='coerce'),
+            period_start,
+            period_end,
+        ),
+        axis=1,  # apply row wise
+        result_type='reduce',  # return series if possible
+    )
+
+    # Account number of cores used by each job
+    ES.hits['cores'] = ES.hits.apply(
+        lambda row: corecount(nodegroup_spec, row['exec_host'], row['total_execution_slots']),
+        axis=1,  # apply row wise
+        result_type='reduce',  # return series if possible
+    )
+    # Convert compute time to units defined in ComputeUnits
+    ES.hits['compute'] = ComputeUnits.job_seconds_to_compute(ES.hits['compute'], ES.hits['cores'], period_span.days)
+
+    # Select username and compute time for each job
+    jobs = pd.DataFrame(columns=['jobid', 'username', 'compute'])
+    jobs = jobs.append(ES.hits.loc[:, ES.hits.columns.intersection(jobs.columns)], sort=False)
+    jobs = jobs.set_index('jobid')
+    logger.debug("'%s' ES query [%s] processed %s jobs", nodegroup, query_id, len(jobs))
+
+    return jobs
+
+
+def corecount(nodegroup_spec, job_hosts, totalcores=None):
+    """
+    Returns number of cores of hosts in job_hosts that belong to this group of nodes
+    If all hosts match returns totalcores (if provided)
+    Otherwise, it counts the number of cores in matching hosts
+    - job_hosts: (list) hostnames allocated to job
+    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+      - nodegroup: (string) name of group of nodes
+      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
+    - totalcores: (integer) number of cores used by job
+    """
+    corespec = list()
+    corecount = 0
+
+    # Unpack nodegroup_spec
+    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+
+    # Take core specification for job hosts matching current node group
+    for node in ng_hosts:
+        corespec += [host.split('/')[1] for host in job_hosts if re.match(node['regex'], host)]
+
+    if totalcores and len(corespec) == len(job_hosts):
+        # All job hosts are in this nodegroup
+        corecount = totalcores
+    else:
+        # Count the actual number of cores used in matching hosts
+        # This count should only be needed in a few cases
+        # (e.g. jobs that used non-GPU and GPU nodes simultaneously)
+        coreranges = [numrange for spec in corespec for numrange in spec.split(',')]
+        # Add to total the first core of all elements in list
+        corecount += len(coreranges)
+        # Add to total any additional cores in ranges of cores
+        for numrange in coreranges:
+            if '-' in numrange:
+                corenum = numrange.split('-')
+                corecount += int(corenum[1]) - int(corenum[0])
+
+    return corecount
+
+
+def job_span(job_start, job_end, period_start, period_end):
+    """
+    Returns seconds that job overlaps with period of time
+    - job_start, job_end: (pd.datetime) start and end timestamps of the job
+    - period_start, period_end: (pd.datetime) start and end timestamps of the period
+    """
+    # Pick latest start
+    tstart = max(job_start, period_start)
+    # Pick earliest end
+    tend = min(job_end, period_end)
+
+    tspan = pd.Timedelta(tend - tstart)
+    tspan = tspan.total_seconds()
+
+    return tspan
+
+
+# Create global object with compute units to be shared between ComputeTimeCount and top level functions
+ComputeUnits = ComputeUnits()

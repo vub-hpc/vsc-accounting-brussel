@@ -34,8 +34,6 @@ from concurrent import futures
 from vsc.utils import fancylogger
 from vsc.accounting.exit import error_exit
 
-logger = fancylogger.getLogger()
-
 
 def parallel_exec(task, label, stack, *args, procs=None, logger=None, **kwargs):
     """
@@ -47,12 +45,15 @@ def parallel_exec(task, label, stack, *args, procs=None, logger=None, **kwargs):
     - procs: (int) number of processors
     - logger: (object) fancylogger object of the caller
     """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
     data_collection = list()
 
     # Start process pool to execute all items in the stack
     with futures.ProcessPoolExecutor(max_workers=procs) as executor:
         task_pool = {
-            executor.submit(task, item, *args, **kwargs): item for item in stack
+            executor.submit(task, item, *args, logger=logger, **kwargs): item for item in stack
         }
         for pid, completed_task in enumerate(futures.as_completed(task_pool)):
             try:
@@ -86,6 +87,9 @@ def cancel_process_pool(pool, error_pid, logger=None):
     - error_pid: (int) process ID of failed process
     - logger: (object) fancylogger object of the caller
     """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
     # Count state of processes in the pool
     processes = {'cancelled': 0, 'running': 0}
 
@@ -95,7 +99,7 @@ def cancel_process_pool(pool, error_pid, logger=None):
             processes['cancelled'] += 1
         elif child.running():
             processes['running'] += 1
-    print(processes['cancelled'], processes['running'])
+
     warnmsg = f"Process [{error_pid}] ended in error. Cancelled all {processes['cancelled']} pending processes"
     logger.warning(warnmsg)
 
