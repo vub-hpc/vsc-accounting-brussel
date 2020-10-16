@@ -55,12 +55,14 @@ PACKAGE = {
         'appdirs',
         # needed to process accounting data
         'numpy >= 1.14.0',
-        'pandas >= 0.23.0',
+        'pandas >= 0.23.0, < 1.0.0',  # v1.0 breaks current use of freq attr in DatetimeIndex
         # needed to retrieve accounting data
         'elasticsearch >= 7.0.0',
         'elasticsearch_dsl >= 7.0.0',
         # needed to render HTML pages
         'beautifulsoup4 >= 4.6.0',
+        'lxml',
+        'jinja2',
         # needed to render plots
         'matplotlib >= 3.0.0',
     ],

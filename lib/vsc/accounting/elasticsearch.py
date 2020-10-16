@@ -55,7 +55,7 @@ class ElasticTorque:
 
         # Set query ID
         try:
-            self.set_id(query_id)
+            self.id = str(query_id)
         except ValueError as err:
             error_exit(self.log, err)
 
@@ -176,15 +176,3 @@ class ElasticTorque:
 
         self.search = self.search.source(self.fields)
         self.log.debug("ES query [%s] retrieving fields: %s", self.id, ','.join(self.fields))
-
-    def set_id(self, id_value):
-        """
-        Set query ID from ID value if it is a digit
-        - id_value: (string or numeric) tentative value for the query ID
-        """
-        if str(id_value).isdigit():
-            self.id = int(id_value)
-            return True
-        else:
-            errmsg = f"ID {id_value} for ElasticSearch query is not a positive integer"
-            raise ValueError(errmsg)

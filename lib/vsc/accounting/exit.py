@@ -48,29 +48,3 @@ def error_exit(logger, message):
 
     # Exit
     sys.exit(1)
-
-
-def cancel_process_pool(logger, pool, error_pid):
-    """
-    Cancel all pending processes in process pool
-    Return count of cancelled processes and running processes
-    - logger: (object) fancylogger object of the caller
-    - pool: (Future) pool of processes
-    - error_pid: (int) process ID of failed process
-    """
-    # Count state of processes in the pool
-    processes = {'cancelled': 0, 'running': 0}
-
-    # Cancel all pending processes in the pool
-    for child in pool:
-        if child.cancel():
-            processes['cancelled'] += 1
-        elif child.running():
-            processes['running'] += 1
-    print(processes['cancelled'], processes['running'])
-    warnmsg = f"Process [{error_pid}] ended in error. Cancelled all {processes['cancelled']} pending processes"
-    logger.warning(warnmsg)
-
-    logger.debug(f"Waiting for {processes['running']} non-cancellable running processes")
-
-    return True
