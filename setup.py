@@ -55,8 +55,7 @@ PACKAGE = {
         'appdirs',
         # needed to process accounting data
         'numpy >= 1.14.0',
-        'pandas >= 0.23.0',
-        'pandas >= 0.23.0, < 1.0.0',
+        'pandas >= 0.23.0, < 1.0.0',  # v1.0 breaks current use of freq attr in DatetimeIndex
         # needed to retrieve accounting data
         'elasticsearch >= 7.0.0',
         'elasticsearch_dsl >= 7.0.0',
