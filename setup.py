@@ -62,6 +62,8 @@ PACKAGE = {
         'elasticsearch_dsl >= 7.0.0',
         # needed to render HTML pages
         'beautifulsoup4 >= 4.6.0',
+        'lxml',
+        'jinja2',
         # needed to render plots
         'matplotlib >= 3.0.0',
     ],
