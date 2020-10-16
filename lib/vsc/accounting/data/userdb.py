@@ -42,10 +42,6 @@ from vsc.accounting.parallel import parallel_exec
 from vsc.accounting.config.parser import MainConf, ConfigFile
 from vsc.accounting.data.parser import DataFile
 
-logger = fancylogger.getLogger()
-fancylogger.logToScreen(True)
-fancylogger.setLogLevelDebug()
-
 
 class UserDB:
     """
@@ -89,9 +85,11 @@ class UserDB:
         # Retrieve account data of requested users
         self.log.info(f"Retrieving {len(self.users)} user account records...")
         requested_records = parallel_exec(
-            self.get_updated_record,  # worker function
+            get_updated_record,  # worker function
             f"User account retrieval",  # label prefixing log messages
             self.users,  # stack of items to process
+            self.cache.contents,  # user_cache: forwarded to worker function
+            self.vsc_token,  # vsc_token: forwarded to worker function
             procs=self.max_procs,
             logger=self.log,
         )
@@ -136,117 +134,140 @@ class UserDB:
 
         return cache
 
-    def user_basic_record(self, username):
-        """
-        Generate basic user record from user name
-        All VSC IDs are ascribed to their site, other usernames are identified as NetID users from ULB
-        WARNING: old NetIDs from VUB without a VSC account are suposed to be already accounted in the cache file
-        - username: (string) username of the account
-        """
-        # Research field is always unknown in these cases
-        user_record = {'field': 'Unknown'}
 
-        # Determine site of account
-        site_index = (BRUSSEL, ANTWERPEN, LEUVEN, GENT)
+# The following functions fit more naturally into the class UserDB.
+# However, in Python 3.6, ProcessPoolExecutor from multiprocessing cannot
+# pickle functions from within classes. Any functions participating in the
+# ProcessPoolExecutor have to be in the top level of the caller's module.
+# Python 3.5, 3.7 and 3.8 do *not* have this restriction and can directly
+# pickle from within the caller's class.
+# See issue: https://bugs.python.org/issue29423
 
-        if username[0:3] == 'vsc' and username[3].isdigit():
-            user_record.update({'site': INSTITUTE_LONGNAME[site_index[vsc_id[3]]]})
+
+def user_basic_record(username):
+    """
+    Generate basic user record from user name
+    All VSC IDs are ascribed to their site, other usernames are identified as NetID users from ULB
+    WARNING: old NetIDs from VUB without a VSC account are suposed to be already accounted in the cache file
+    - username: (string) username of the account
+    """
+    # Research field is always unknown in these cases
+    user_record = {'field': 'Unknown'}
+
+    # Determine site of account
+    site_index = (BRUSSEL, ANTWERPEN, LEUVEN, GENT)
+
+    if username[0:3] == 'vsc' and username[3].isdigit():
+        user_record.update({'site': INSTITUTE_LONGNAME[site_index[vsc_id[3]]]})
+    else:
+        user_record.update({'site': "Université Libre de Bruxelles"})
+
+    # Set timestamp to today
+    user_record.update({'updated': date.today().isoformat()})
+
+    return user_record
+
+
+def get_vsc_record(username, vsc_token, logger=None):
+    """
+    Retrieve and update list of VSC users with data from VSC account page
+    - username: (string) VSC ID or institute user of the VSC account
+    - vsc_token: (string) access token to VSC account page
+    - logger: (object) fancylogger object of the caller
+    """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
+    vsc_api_client = AccountpageClient(token=vsc_token)
+
+    # Get institute login of the VSC account attached to this username
+    if username[0:3] == 'vsc' and username[3].isdigit():
+        # VSC ID: query institute login to VSC account page
+        logger.debug(f"[{username}] user treated as VSC ID")
+        try:
+            vsc_account = vsc_api_client.account[username].person.get()[1]
+        except HTTPError as err:
+            if err.code == 404:
+                error_exit(logger, f"[{username}] VSC ID not found in VSC account page")
+            else:
+                error_exit(logger, f"[{username}] {err}")
+        except (TimeoutError, URLError) as err:
+            error_exit(logger, f"[{username}] connection to VSC account page timed out")
         else:
-            user_record.update({'site': "Université Libre de Bruxelles"})
+            vsc_login = {'username': vsc_account['institute_login'], 'site': vsc_account['institute']['name']}
+            logger.debug(f"[{username}] VSC ID belongs to VSC account '{vsc_login['username']}'")
+    else:
+        # Others: assume NetID from Brussels
+        logger.debug(f"[{username}] user treated as NetID")
+        vsc_login = {'username': username, 'site': BRUSSEL}
 
-        # Set timestamp to today
-        user_record.update({'updated': date.today().isoformat()})
+    # Retrieve user data from VSC account page
+    try:
+        vsc_account = vsc_api_client.account.institute[vsc_login['site']].id[vsc_login['username']].get()[1]
+    except HTTPError as err:
+        if err.code == 404:
+            logger.debug(f"[{username}] with VSC account '{vsc_login['username']}' not found")
+            return None
+        else:
+            error_exit(logger, f"[{username}] {err}")
+    except (TimeoutError, URLError) as err:
+        error_exit(logger, f"[{username}] connection to VSC account page timed out")
+    else:
+        logger.debug(f"[{username}] user account record retrieved from VSC account '{vsc_login['username']}'")
+
+        user_record = {
+            # only use first entry of research field
+            'field': vsc_account['research_field'][0],
+            'site': INSTITUTE_LONGNAME[vsc_account['person']['institute']['name']],
+            'updated': date.today().isoformat(),
+        }
 
         return user_record
 
-    def get_vsc_record(self, username):
-        """
-        Retrieve and update list of VSC users with data from VSC account page
-        - username: (string) VSC ID or institute user of the VSC account
-        """
-        vsc_api_client = AccountpageClient(token=self.vsc_token)
 
-        # Get institute login of the VSC account attached to this username
-        if username[0:3] == 'vsc' and username[3].isdigit():
-            # VSC ID: query institute login to VSC account page
-            self.log.debug(f"[{username}] user treated as VSC ID")
-            try:
-                vsc_account = vsc_api_client.account[username].person.get()[1]
-            except HTTPError as err:
-                if err.code == 404:
-                    error_exit(self.log, f"[{username}] VSC ID not found in VSC account page")
-                else:
-                    error_exit(self.log, f"[{username}] {err}")
-            except (TimeoutError, URLError) as err:
-                error_exit(self.log, f"[{username}] connection to VSC account page timed out")
-            else:
-                vsc_login = {'username': vsc_account['institute_login'], 'site': vsc_account['institute']['name']}
-                self.log.debug(f"[{username}] VSC ID belongs to VSC account '{vsc_login['username']}'")
-        else:
-            # Others: assume NetID from Brussels
-            self.log.debug(f"[{username}] user treated as NetID")
-            vsc_login = {'username': username, 'site': BRUSSEL}
+def get_updated_record(username, user_cache, vsc_token, logger=None):
+    """
+    Return user record with up to date information
+    First check local cache. If missing or outdated check VSC account page
+    - username: (string) username of the account
+    - user_cache: (dict) data base of user accounts
+    - vsc_token: (string) access token to VSC account page
+    - logger: (object) fancylogger object of the caller
+    """
+    if logger is None:
+        logger = fancylogger.getLogger()
 
-        # Retrieve user data from VSC account page
+    # Existing user
+    if username in user_cache['db']:
+        # Retrieve record from existing local cache
+        user_record = user_cache['db'][username]
+        logger.debug(f"[{username}] user account record retrieved from local cache")
+
         try:
-            vsc_account = vsc_api_client.account.institute[vsc_login['site']].id[vsc_login['username']].get()[1]
-        except HTTPError as err:
-            if err.code == 404:
-                self.log.debug(f"[{username}] with VSC account '{vsc_login['username']}' not found")
-                return None
-            else:
-                error_exit(self.log, f"[{username}] {err}")
-        except (TimeoutError, URLError) as err:
-            error_exit(self.log, f"[{username}] connection to VSC account page timed out")
+            # Once we can use Python 3.7+, the following can be replaced with date.fromisoformat()
+            record_date = datetime.strptime(user_record['updated'], '%Y-%m-%d').date()
+        except ValueError as err:
+            errmsg = f"[{username}] user account record in local cache is malformed"
+            error_exit(logger, errmsg)
         else:
-            self.log.debug(f"[{username}] user account record retrieved from VSC account '{vsc_login['username']}'")
+            record_age = date.today() - record_date
 
-            user_record = {
-                # only use first entry of research field
-                'field': vsc_account['research_field'][0],
-                'site': INSTITUTE_LONGNAME[vsc_account['person']['institute']['name']],
-                'updated': date.today().isoformat(),
-            }
-
-            return user_record
-
-    def get_updated_record(self, username):
-        """
-        Return user record with up to date information
-        First check local cache. If missing or outdated check VSC account page
-        - username: (string) username of the account
-        """
-        # Existing user
-        if username in self.cache.contents['db']:
-            # Retrieve record from existing local cache
-            user_record = self.cache.contents['db'][username]
-            self.log.debug(f"[{username}] user account record retrieved from local cache")
-
-            try:
-                # Once we can use Python 3.7+, the following can be replaced with date.fromisoformat()
-                record_date = datetime.strptime(user_record['updated'], '%Y-%m-%d').date()
-            except ValueError as err:
-                errmsg = f"[{username}] user account record in local cache is malformed"
-                error_exit(self.log, errmsg)
+        if record_age.days > user_cache['valid_days']:
+            fresh_record = get_vsc_record(username, vsc_token)
+            if fresh_record:
+                # Update outdated record with data from VSC account page
+                user_record.update(fresh_record)
+                logger.debug(f"[{username}] user account record updated from VSC account page")
             else:
-                record_age = date.today() - record_date
+                # Account missing in VSC account page, keep existing record in our data base
+                user_record['updated'] = date.today().isoformat()
+    # New user
+    else:
+        # Retrieve full record from VSC account page
+        user_record = get_vsc_record(username, vsc_token)
+        if not user_record:
+            # Generate a default record for users not present in VSC account page
+            user_record = user_basic_record(username)
+            logger.debug(f"[{username}] new user account registered as member of {user_record['site']}")
 
-            if record_age.days > self.cache.contents['valid_days']:
-                fresh_record = self.get_vsc_record(username)
-                if fresh_record:
-                    # Update outdated record with data from VSC account page
-                    user_record.update(fresh_record)
-                    self.log.debug(f"[{username}] user account record updated from VSC account page")
-                else:
-                    # Account missing in VSC account page, keep existing record in our data base
-                    user_record['updated'] = date.today().isoformat()
-        # New user
-        else:
-            # Retrieve full record from VSC account page
-            user_record = self.get_vsc_record(username)
-            if not user_record:
-                # Generate a default record for users not present in VSC account page
-                user_record = self.user_basic_record(username)
-                self.log.debug(f"[{username}] new user account registered as member of {user_record['site']}")
-
-        return {username: user_record}
+    return {username: user_record}
