@@ -29,6 +29,8 @@ Parallel engine to process tasks in vsc.accounting
 @author: Alex Domingo (Vrije Universiteit Brussel)
 """
 
+import sys
+
 from concurrent import futures
 
 from vsc.utils import fancylogger
@@ -48,12 +50,16 @@ def parallel_exec(task, label, stack, *args, procs=None, logger=None, **kwargs):
     if logger is None:
         logger = fancylogger.getLogger()
 
+    # In Python 3.6, passing the logger to worker functions will make them non-picklable by ProcessPoolExecutor
+    pyver = sys.version_info
+    worker_logger = logger if pyver[0] >= 3 and pyver[1] >= 7 else None
+
     data_collection = list()
 
     # Start process pool to execute all items in the stack
     with futures.ProcessPoolExecutor(max_workers=procs) as executor:
         task_pool = {
-            executor.submit(task, item, *args, logger=logger, **kwargs): item for item in stack
+            executor.submit(task, item, *args, logger=worker_logger, **kwargs): item for item in stack
         }
         for pid, completed_task in enumerate(futures.as_completed(task_pool)):
             try:
