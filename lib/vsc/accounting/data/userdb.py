@@ -155,10 +155,11 @@ def user_basic_record(username):
     user_record = {'field': 'Unknown'}
 
     # Determine site of account
-    site_index = (BRUSSEL, ANTWERPEN, LEUVEN, GENT)
+    site = (None, BRUSSEL, ANTWERPEN, LEUVEN, GENT)
 
     if username[0:3] == 'vsc' and username[3].isdigit():
-        user_record.update({'site': INSTITUTE_LONGNAME[site_index[vsc_id[3]]]})
+        user_site_index = int(username[3])
+        user_record.update({'site': INSTITUTE_LONGNAME[site[user_site_index]]})
     else:
         user_record.update({'site': "Université Libre de Bruxelles"})
 
