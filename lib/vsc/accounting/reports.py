@@ -131,7 +131,7 @@ def compute_percent(ComputeTime, colorlist, savedir, plotformat, csv=False):
         'compute_time': f"Compute Time ({ComputeTime.compute_units['name']})",
         'capacity': f"Capacity ({ComputeTime.compute_units['name']})",
         'percent_capacity': "Capacity Used (%)",
-        'total_capacity': f"Total Capacity (ComputeTime.compute_units['name'])",
+        'total_capacity': f"Total Capacity ({ComputeTime.compute_units['name']})",
         'percent_total_capacity': "Total Capacity Used (%)",
         'global_percent_capacity': "Total Capacity Used Globally (%)",
     }
