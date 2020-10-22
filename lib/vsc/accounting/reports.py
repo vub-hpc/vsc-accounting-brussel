@@ -254,7 +254,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
 
     # Source data for selected accounting and aggregate
     try:
-        sources = source_data(selection, aggregate)
+        sources = source_data(selection, aggregate, ComputeTime.compute_units['name'])
     except AttributeError as err:
         error_exit(logger, err)
 
@@ -822,18 +822,19 @@ def simple_names_units(names, units=None):
     return name_titles
 
 
-def source_data(counter, aggregate):
+def source_data(counter, aggregate, compute_units):
     """
     Return dict with names of objects that hold source data to generate an aggregate accounting
     - counter: (string) name of global data in the accounting
     - aggregate: (string) name of aggregate criteria
+    - compute_units: (string) long name of compute units
     """
     sources = dict()
 
     # Source of accounting data
     if counter == 'Compute':
         sources.update({'reference': 'compute_time'})
-        sources.update({'units': ComputeTime.compute_units['name']})
+        sources.update({'units': compute_units})
     elif counter == 'Jobs':
         sources.update({'reference': 'running_jobs'})
         sources.update({'units': 'jobs/day'})
