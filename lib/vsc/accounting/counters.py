@@ -403,7 +403,8 @@ class ComputeTimeCount:
         - percent_name: (string) name of column to save percentage data
         """
         source_data = self.getattr(source)
-        percent_data = source_data.loc[:, absolute] / source_data.loc[:, reference]
+        # Calculate percentage avoiding divides by zero and replacing NaN with zeros
+        percent_data = source_data.loc[:, absolute] / source_data.loc[:, reference].replace({0: float('nan')})
         percent_data = percent_data.fillna(0)
 
         if not percent_name:
