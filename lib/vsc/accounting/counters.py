@@ -245,7 +245,7 @@ class ComputeTimeCount:
             count_computejobsusers,  # worker function
             f"'{nodegroup}' compute/job counter",  # label prefixing log messages
             ng_index.levels[0],  # stack of items to process
-            {nodegroup: self.NG[nodegroup]},  # nodegroup_spec: forwarded to worker function
+            (nodegroup, self.NG[nodegroup]),  # nodegroup_spec: forwarded to worker function
             procs=self.max_procs,
             logger=self.log,
             peruser=True,  # forwarded to worker function
@@ -532,9 +532,9 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
     Returns dict with global counters on running jobs, unique users and compute time
     Data source is a list of running jobs in the given time period and in the given nodegroup
     - period_start: (pd.timestamp) start of time interval
-    - nodegroup_spec: (dict) {nodegroup: [hosts]}
-      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
+    - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
+      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
     - peruser: (boolean) return additional dicts with stats per user
     - logger: (object) fancylogger object of the caller
     """
@@ -542,7 +542,7 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
         logger = fancylogger.getLogger()
 
     # Unpack nodegroup_spec
-    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+    (nodegroup, ng_hosts) = nodegroup_spec
 
     # Define length of current period
     period_end = period_start + period_start.freq
@@ -618,7 +618,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     Calculates used compute time by jobs in the period of time
     - query_id: (int) arbitrary identification number of the query
     - period_start: (pd.timestamp) start of time interval
-    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+    - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
     - logger: (object) fancylogger object of the caller
@@ -627,7 +627,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
         logger = fancylogger.getLogger()
 
     # Unpack nodegroup_spec
-    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+    (nodegroup, ng_hosts) = nodegroup_spec
 
     # Define length of current period
     period_end = period_start + period_start.freq
@@ -686,7 +686,7 @@ def corecount(nodegroup_spec, job_hosts, totalcores=None):
     If all hosts match returns totalcores (if provided)
     Otherwise, it counts the number of cores in matching hosts
     - job_hosts: (list) hostnames allocated to job
-    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+    - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
     - totalcores: (integer) number of cores used by job
@@ -695,7 +695,7 @@ def corecount(nodegroup_spec, job_hosts, totalcores=None):
     corecount = 0
 
     # Unpack nodegroup_spec
-    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+    (nodegroup, ng_hosts) = nodegroup_spec
 
     # Take core specification for job hosts matching current node group
     for node in ng_hosts:
