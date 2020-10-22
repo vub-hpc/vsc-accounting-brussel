@@ -240,7 +240,7 @@ class ComputeTimeCount:
         ng_capacity = ng_capacity.set_index(multidx)
         self.log.debug("'%s' updated %s capacity records", nodegroup, ng_capacity.shape[0])
 
-        # Add compute stats of this nodegroup
+        # Retrieve compute stats of this nodegroup
         ng_compute = parallel_exec(
             count_computejobsusers,  # worker function
             f"'{nodegroup}' compute/job counter",  # label prefixing log messages
@@ -254,14 +254,14 @@ class ComputeTimeCount:
         # ng_compute = [count_computejobsusers(n, *dt, peruser=True) for (n, dt) in enumerate(ng_index)]
         self.log.debug("'%s' retrieved %s compute time data records", nodegroup, len(ng_compute))
 
-        # Global compute stats
+        # Unpack compue stats and create data frame with global compute stats
         ng_global, ng_peruser = zip(*ng_compute)
         ng_global = pd.DataFrame(ng_global).set_index(multidx)
         ng_global = pd.merge(ng_capacity, ng_global, left_index=True, right_index=True, sort=True)
         self.GlobalStats = self.GlobalStats.combine_first(ng_global)
         self.log.debug("'%s' Global stats completed with %s data records", nodegroup, self.GlobalStats.shape[0])
 
-        # User stats on compute time and jobs
+        # Unpack user stats and create data frame with user compute time and jobs
         ng_peruser = [(record['compute'], record['jobs']) for record in ng_peruser]
         ng_peruser_compute, ng_peruser_jobs = zip(*ng_peruser)
         ng_peruser_compute = pd.DataFrame(ng_peruser_compute).set_index(multidx)
@@ -280,6 +280,9 @@ class ComputeTimeCount:
 
         # Update user data and generate aggregates per field and site
         for counter_name, counter_data in ng_peruser_counters:
+            # Order data by date
+            counter_data.sort_index(level='date', ascending=True, inplace=True)
+            # Add to respective data frame
             UserCounts = self.getattr('User' + counter_name)
             UserCounts = UserCounts.combine_first(counter_data).fillna(0)
             self.setattr('User' + counter_name, UserCounts)
