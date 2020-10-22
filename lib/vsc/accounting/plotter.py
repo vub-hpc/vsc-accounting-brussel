@@ -328,11 +328,10 @@ class Plotter:
         It needs to be calculated because DatetimeIndexes loose the freq attribute in Multiindexes
         """
         # Number of days between consecutive dates
+        day_span = 0
         if 'date' in self.table.index.names:
             dateidx = self.table.index.get_level_values('date').unique()
             day_span = (dateidx[1] - dateidx[0]).days
-        else:
-            day_span = 0
 
         # Frequency label
         if day_span == 1:
