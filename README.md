@@ -22,13 +22,15 @@ Software dependencies
   * numpy
   * pandas
   * matplotlib
+  * jinja2
+  * lxml
   * beautifulsoup4
   * elasticsearch
-  * elasticsearch_dsl
+  * elasticsearch-dsl
 
 Infrastructure
 * Access to ELK server with the logstash of your job scheduler
-* Access to VSC Account page (optional)
+* Access to VSC Account page
 
 ## Data Sources
 

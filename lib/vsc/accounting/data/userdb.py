@@ -79,8 +79,15 @@ class UserDB:
         except KeyError as err:
             error_exit(self.log, err)
 
-        # Load all user data base from local cache
+        # Load user data base from local cache
         self.cache = self.load_db_cache()
+
+        # Update list of users with their records in the cache
+        for n, user in enumerate(self.users):
+            if user in self.cache.contents['db']:
+                self.users[n] = (user, self.cache.contents['db'][user])
+            else:
+                self.users[n] = (user, None)
 
         # Retrieve account data of requested users
         self.log.info(f"Retrieving {len(self.users)} user account records...")
@@ -88,7 +95,7 @@ class UserDB:
             get_updated_record,  # worker function
             f"User account retrieval",  # label prefixing log messages
             self.users,  # stack of items to process
-            self.cache.contents,  # user_cache: forwarded to worker function
+            self.cache.contents['valid_days'],  # record_validity: forwarded to worker function
             self.vsc_token,  # vsc_token: forwarded to worker function
             procs=self.max_procs,
             logger=self.log,
@@ -144,21 +151,27 @@ class UserDB:
 # See issue: https://bugs.python.org/issue29423
 
 
-def user_basic_record(username):
+def user_basic_record(username, logger=None):
     """
     Generate basic user record from user name
     All VSC IDs are ascribed to their site, other usernames are identified as NetID users from ULB
     WARNING: old NetIDs from VUB without a VSC account are suposed to be already accounted in the cache file
     - username: (string) username of the account
+    - logger: (object) fancylogger object of the caller
     """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
     # Research field is always unknown in these cases
     user_record = {'field': 'Unknown'}
 
     # Determine site of account
-    site_index = (BRUSSEL, ANTWERPEN, LEUVEN, GENT)
+    site = (None, BRUSSEL, ANTWERPEN, LEUVEN, GENT)
 
     if username[0:3] == 'vsc' and username[3].isdigit():
-        user_record.update({'site': INSTITUTE_LONGNAME[site_index[vsc_id[3]]]})
+        user_site_index = int(username[3])
+        user_record.update({'site': INSTITUTE_LONGNAME[site[user_site_index]]})
+        logger.warning(f"[{username}] account not found in VSC account page, record added with site information only")
     else:
         user_record.update({'site': "Université Libre de Bruxelles"})
 
@@ -225,49 +238,51 @@ def get_vsc_record(username, vsc_token, logger=None):
         return user_record
 
 
-def get_updated_record(username, user_cache, vsc_token, logger=None):
+def get_updated_record(user_record, record_validity, vsc_token, logger=None):
     """
     Return user record with up to date information
     First check local cache. If missing or outdated check VSC account page
-    - username: (string) username of the account
-    - user_cache: (dict) data base of user accounts
+    - user_record: (tuple) username and its account record
+    - record_validity: (int) number of days that user records are valid
     - vsc_token: (string) access token to VSC account page
     - logger: (object) fancylogger object of the caller
     """
     if logger is None:
         logger = fancylogger.getLogger()
 
+    # Unpack user record
+    (username, record_data) = user_record
+
     # Existing user
-    if username in user_cache['db']:
-        # Retrieve record from existing local cache
-        user_record = user_cache['db'][username]
-        logger.debug(f"[{username}] user account record retrieved from local cache")
+    if record_data:
+        logger.debug(f"[{username}] user account record exists in local cache")
 
         try:
+            # Calculate age of existing record
             # Once we can use Python 3.7+, the following can be replaced with date.fromisoformat()
-            record_date = datetime.strptime(user_record['updated'], '%Y-%m-%d').date()
+            record_date = datetime.strptime(record_data['updated'], '%Y-%m-%d').date()
         except ValueError as err:
             errmsg = f"[{username}] user account record in local cache is malformed"
             error_exit(logger, errmsg)
         else:
             record_age = date.today() - record_date
 
-        if record_age.days > user_cache['valid_days']:
+        if record_age.days > record_validity:
             fresh_record = get_vsc_record(username, vsc_token)
             if fresh_record:
                 # Update outdated record with data from VSC account page
-                user_record.update(fresh_record)
+                record_data.update(fresh_record)
                 logger.debug(f"[{username}] user account record updated from VSC account page")
             else:
                 # Account missing in VSC account page, keep existing record in our data base
-                user_record['updated'] = date.today().isoformat()
+                record_data['updated'] = date.today().isoformat()
     # New user
     else:
         # Retrieve full record from VSC account page
-        user_record = get_vsc_record(username, vsc_token)
-        if not user_record:
+        record_data = get_vsc_record(username, vsc_token)
+        if not record_data:
             # Generate a default record for users not present in VSC account page
-            user_record = user_basic_record(username)
-            logger.debug(f"[{username}] new user account registered as member of {user_record['site']}")
+            record_data = user_basic_record(username)
+            logger.debug(f"[{username}] new user account registered as member of {record_data['site']}")
 
-    return {username: user_record}
+    return {username: record_data}

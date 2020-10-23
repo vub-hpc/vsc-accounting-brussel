@@ -240,12 +240,12 @@ class ComputeTimeCount:
         ng_capacity = ng_capacity.set_index(multidx)
         self.log.debug("'%s' updated %s capacity records", nodegroup, ng_capacity.shape[0])
 
-        # Add compute stats of this nodegroup
+        # Retrieve compute stats of this nodegroup
         ng_compute = parallel_exec(
             count_computejobsusers,  # worker function
             f"'{nodegroup}' compute/job counter",  # label prefixing log messages
             ng_index.levels[0],  # stack of items to process
-            {nodegroup: self.NG[nodegroup]},  # nodegroup_spec: forwarded to worker function
+            (nodegroup, self.NG[nodegroup]),  # nodegroup_spec: forwarded to worker function
             procs=self.max_procs,
             logger=self.log,
             peruser=True,  # forwarded to worker function
@@ -254,14 +254,14 @@ class ComputeTimeCount:
         # ng_compute = [count_computejobsusers(n, *dt, peruser=True) for (n, dt) in enumerate(ng_index)]
         self.log.debug("'%s' retrieved %s compute time data records", nodegroup, len(ng_compute))
 
-        # Global compute stats
+        # Unpack compue stats and create data frame with global compute stats
         ng_global, ng_peruser = zip(*ng_compute)
         ng_global = pd.DataFrame(ng_global).set_index(multidx)
         ng_global = pd.merge(ng_capacity, ng_global, left_index=True, right_index=True, sort=True)
         self.GlobalStats = self.GlobalStats.combine_first(ng_global)
         self.log.debug("'%s' Global stats completed with %s data records", nodegroup, self.GlobalStats.shape[0])
 
-        # User stats on compute time and jobs
+        # Unpack user stats and create data frame with user compute time and jobs
         ng_peruser = [(record['compute'], record['jobs']) for record in ng_peruser]
         ng_peruser_compute, ng_peruser_jobs = zip(*ng_peruser)
         ng_peruser_compute = pd.DataFrame(ng_peruser_compute).set_index(multidx)
@@ -280,6 +280,9 @@ class ComputeTimeCount:
 
         # Update user data and generate aggregates per field and site
         for counter_name, counter_data in ng_peruser_counters:
+            # Order data by date
+            counter_data.sort_index(level='date', ascending=True, inplace=True)
+            # Add to respective data frame
             UserCounts = self.getattr('User' + counter_name)
             UserCounts = UserCounts.combine_first(counter_data).fillna(0)
             self.setattr('User' + counter_name, UserCounts)
@@ -400,7 +403,8 @@ class ComputeTimeCount:
         - percent_name: (string) name of column to save percentage data
         """
         source_data = self.getattr(source)
-        percent_data = source_data.loc[:, absolute] / source_data.loc[:, reference]
+        # Calculate percentage avoiding divides by zero and replacing NaN with zeros
+        percent_data = source_data.loc[:, absolute] / source_data.loc[:, reference].replace({0: float('nan')})
         percent_data = percent_data.fillna(0)
 
         if not percent_name:
@@ -532,9 +536,9 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
     Returns dict with global counters on running jobs, unique users and compute time
     Data source is a list of running jobs in the given time period and in the given nodegroup
     - period_start: (pd.timestamp) start of time interval
-    - nodegroup_spec: (dict) {nodegroup: [hosts]}
-      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
+    - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
+      - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
     - peruser: (boolean) return additional dicts with stats per user
     - logger: (object) fancylogger object of the caller
     """
@@ -542,7 +546,7 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
         logger = fancylogger.getLogger()
 
     # Unpack nodegroup_spec
-    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+    (nodegroup, ng_hosts) = nodegroup_spec
 
     # Define length of current period
     period_end = period_start + period_start.freq
@@ -618,7 +622,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     Calculates used compute time by jobs in the period of time
     - query_id: (int) arbitrary identification number of the query
     - period_start: (pd.timestamp) start of time interval
-    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+    - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
     - logger: (object) fancylogger object of the caller
@@ -627,7 +631,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
         logger = fancylogger.getLogger()
 
     # Unpack nodegroup_spec
-    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+    (nodegroup, ng_hosts) = nodegroup_spec
 
     # Define length of current period
     period_end = period_start + period_start.freq
@@ -686,7 +690,7 @@ def corecount(nodegroup_spec, job_hosts, totalcores=None):
     If all hosts match returns totalcores (if provided)
     Otherwise, it counts the number of cores in matching hosts
     - job_hosts: (list) hostnames allocated to job
-    - nodegroup_spec: (dict) {nodegroup: [hosts]}
+    - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
     - totalcores: (integer) number of cores used by job
@@ -695,7 +699,7 @@ def corecount(nodegroup_spec, job_hosts, totalcores=None):
     corecount = 0
 
     # Unpack nodegroup_spec
-    ((nodegroup, ng_hosts),) = nodegroup_spec.items()
+    (nodegroup, ng_hosts) = nodegroup_spec
 
     # Take core specification for job hosts matching current node group
     for node in ng_hosts:
