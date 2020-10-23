@@ -167,6 +167,7 @@ def user_basic_record(username):
     if username[0:3] == 'vsc' and username[3].isdigit():
         user_site_index = int(username[3])
         user_record.update({'site': INSTITUTE_LONGNAME[site[user_site_index]]})
+        logger.warning(f"[{username}] account not found in VSC account page, record added with site information only")
     else:
         user_record.update({'site': "Université Libre de Bruxelles"})
 
