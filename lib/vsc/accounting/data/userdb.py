@@ -151,13 +151,17 @@ class UserDB:
 # See issue: https://bugs.python.org/issue29423
 
 
-def user_basic_record(username):
+def user_basic_record(username, logger=None):
     """
     Generate basic user record from user name
     All VSC IDs are ascribed to their site, other usernames are identified as NetID users from ULB
     WARNING: old NetIDs from VUB without a VSC account are suposed to be already accounted in the cache file
     - username: (string) username of the account
+    - logger: (object) fancylogger object of the caller
     """
+    if logger is None:
+        logger = fancylogger.getLogger()
+
     # Research field is always unknown in these cases
     user_record = {'field': 'Unknown'}
 
