@@ -422,15 +422,21 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
         {'thrs': 0.01, 'color': '#4ffbdf'},
     ]
 
-    # Generate area plot stacks
+    # Generate percentile stacks for the area plot
     plot_stacks = dict()
 
+    # Calculate users in each percentile
     for pctl in user_percentile:
-        # Users in this percentile
-        pctl['name'] = (column_title[0], column_title[1].format(pctl['thrs']))
         pctl['user_num'] = int(np.around(len(top_users.index) * pctl['thrs'], 0))
-        pctl_user_list = top_users.iloc[: pctl['user_num']]
+
+    # Remove unpopulated percentiles
+    user_percentile = [pctl for pctl in user_percentile if pctl['user_num'] > 0]
+
+    # Calculate compute stats per percentile
+    for pctl in user_percentile:
+        pctl['name'] = (column_title[0], column_title[1].format(pctl['thrs']))
         # Add total percentage compute for this percentile of users (used in legend)
+        pctl_user_list = top_users.iloc[: pctl['user_num']]
         pctl['compute_used'] = pctl_user_list['compute_percentile'][-1]
         # Calculate total compute time used by users in this percentile
         pctl_compute = ComputeTime.UserCompute.loc[:, pctl_user_list.index].groupby('date').sum().sum(axis=1)
