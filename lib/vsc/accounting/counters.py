@@ -56,15 +56,15 @@ class ComputeUnits:
     def __init__(self, units='corehours'):
         """
         Define charcateristics of supported units and set the active one
-        Compute units with 'norm=True' will be normalized to days, this is useful to have units with a common
-        reference independent of time resolutions (date_freq in ComputeTimeCount)
+        Compute units are normalized to days to work with a common reference independent
+        of time resolutions (date_freq in ComputeTimeCount)
         - units: (string) selected units used to account compute time
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
         self.known_units = {
-            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'factor': 3600, 'norm': True},
-            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'factor': 86400, 'norm': True},
+            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'absolute': 'corehours', 'factor': 3600},
+            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'absolute': 'coredays', 'factor': 86400},
         }
 
         self.set_units(units)
@@ -81,19 +81,18 @@ class ComputeUnits:
         else:
             self.log.debug("Compute units set to '%s'", self.active_units['name'])
 
-    def job_seconds_to_compute(self, job_time, used_cores, days):
+    def job_seconds_to_compute(self, job_time, used_cores, period_span):
         """
         Returns compute time per day using the active compute units
         Warning: this function is structured to work with individual variables, pd.Series or pd.DataFrames that contain
                  the following numerical parameters
         - job_time: (float) real used time in seconds
         - used_cores: (int) number of cores used during job_time
-        - days: (int) number of days (used in normalized units)
+        - period_span: (int) length of time period
         """
         try:
             total_compute_units = job_time * used_cores / self.active_units['factor']
-            if self.active_units['norm']:
-                daily_compute_units = total_compute_units / days
+            daily_compute_units = total_compute_units / period_span
         except ValueError as err:
             error_exit(self.log, f"Compute time unit conversion to {self.active_units['name']} failed: {err}")
         else:
@@ -479,7 +478,7 @@ class ComputeTimeCount:
 
         # Calculate average length of time periods (some frequencies imply periods of different length)
         period_span = compute_data.index.to_series().diff().mean().days
-        # Convert normalized daily compute time to total absolute compute time in the time period
+        # Convert daily compute time to absolute compute time in the time period
         rankings['compute_time'] = rankings.loc[:, 'compute_time'] * period_span
 
         self.log.info("Ranking of %s %ss by compute time generated succesfully", len(rankings.index), aggregate)
@@ -593,10 +592,9 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
         info_msg += f" ({duplicate_jobs} duplicates removed)"
     logger.info(info_msg)
 
-    # Normalize global non-compute counters to units per day if compute units are also normalized
-    if ComputeUnits.active_units['norm']:
-        for counter in ['running_jobs', 'unique_users']:
-            global_counters[counter] /= period_span.days
+    # Normalize global non-compute counters to units per day
+    for counter in ['running_jobs', 'unique_users']:
+        global_counters[counter] /= period_span.days
 
     logger.debug("'%s' period [%s] global counters: %s", nodegroup, query_id, global_counters)
 
@@ -608,9 +606,8 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
             'jobs': jobs.groupby('username').count(),
         }
 
-        # Normalize counter of jobs to units per day if compute units are also normalized
-        if ComputeUnits.active_units['norm']:
-            peruser_counters['jobs']['compute'] /= period_span.days
+        # Normalize counter of jobs to units per day
+        peruser_counters['jobs']['compute'] /= period_span.days
 
         # Generate list of dicts with one dict per user with its counters and indexes
         # [{username: counter, date: date, nodegroup: nodegroup}, ...]

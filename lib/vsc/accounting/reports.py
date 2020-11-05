@@ -475,7 +475,8 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
     areaplot = PlotterArea(**plot)
 
     # Format ranking of top users
-    top_users = format_ranking_table(top_users, ComputeTime.compute_units['name'])
+    ranking_units = (ComputeTime.compute_units['name'], ComputeTime.compute_units['absolute'])
+    top_users = format_ranking_table(top_users, *ranking_units)
     top_users.index.name = 'User'
     logger.debug("Data in the ranking table: %s", ", ".join(top_users.columns))
 
@@ -597,7 +598,8 @@ def top_fields(ComputeTime, percent, savedir, plotformat, csv=False):
     stackplot = PlotterStack(**plot)
 
     # Format ranking of top fields
-    top_fields = format_ranking_table(top_fields, ComputeTime.compute_units['name'])
+    ranking_units = (ComputeTime.compute_units['name'], ComputeTime.compute_units['absolute'])
+    top_fields = format_ranking_table(top_fields, *ranking_units)
     top_fields.index.name = 'Field'
     logger.debug("Data in the ranking table: %s", ", ".join(top_fields.columns))
 
@@ -706,7 +708,8 @@ def top_sites(ComputeTime, percent, savedir, plotformat, csv=False):
     lineplot = PlotterLine(**plot)
 
     # Format ranking of top fields
-    top_sites = format_ranking_table(top_sites, ComputeTime.compute_units['name'])
+    ranking_units = (ComputeTime.compute_units['name'], ComputeTime.compute_units['absolute'])
+    top_sites = format_ranking_table(top_sites, *ranking_units)
     top_sites.index.name = 'Site'
     logger.debug("Data in the ranking table: %s", ", ".join(top_sites.columns))
 
@@ -859,15 +862,16 @@ def source_data(counter, aggregate, compute_units):
     return sources
 
 
-def format_ranking_table(ranking, compute_units):
+def format_ranking_table(ranking, average_units, compute_units):
     """
     Common formating of ranking data frame to be outputted as table (HTML or CSV)
     - table: (DataFrame) ranking table from ComputeTimeFrame.rank_aggregate()
-    - compute_units: (string) long name of compute units
+    - average_units: (string) long name of average compute units
+    - compute_units: (string) long name of total compute units
     """
     ranking = ranking.loc[:, ['compute_average', 'compute_time', 'compute_percent']]
     th = {
-        'compute_average': f"Average Compute Time ({compute_units})",
+        'compute_average': f"Average Compute Time ({average_units})",
         'compute_time': f"Compute Time ({compute_units})",
         'compute_percent': 'Total Compute Used (%)',
     }
