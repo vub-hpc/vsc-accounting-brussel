@@ -32,7 +32,7 @@ Data retrieval from ElasticSearch for vsc.accounting
 import pandas as pd
 
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import ConnectionError, ConnectionTimeout, TransportError
+from elasticsearch.exceptions import ConnectionError, ConnectionTimeout, NotFoundError, TransportError
 from elasticsearch_dsl import Search
 
 from vsc.utils import fancylogger
@@ -176,3 +176,14 @@ class ElasticTorque:
 
         self.search = self.search.source(self.fields)
         self.log.debug("ES query [%s] retrieving fields: %s", self.id, ','.join(self.fields))
+
+    def scan_hits(self):
+        """
+        Scan all hits in Search object and handle any errors
+        """
+        try:
+            hits = [hit for hit in self.search.scan()]
+        except NotFoundError as err:
+            error_exit(self.log, f"ES query [{self.id}] search result not found: {err}")
+        else:
+            return hits

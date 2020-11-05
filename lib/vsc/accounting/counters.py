@@ -651,7 +651,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     ES.set_source(extra=['jobid', 'username', 'exec_host', 'total_execution_slots'])
     logger.debug("'%s' ES query [%s]: %s", nodegroup, query_id, ES.search.to_dict())
 
-    ES.hits = pd.DataFrame([hit.to_dict() for hit in ES.search.scan()])
+    ES.hits = pd.DataFrame([hit.to_dict() for hit in ES.scan_hits()])
     logger.debug("'%s' ES query [%s] retrieved %s hits", nodegroup, query_id, len(ES.hits))
 
     # Calculate compute time for each job on this time period
