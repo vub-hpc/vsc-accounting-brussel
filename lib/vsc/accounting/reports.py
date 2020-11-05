@@ -63,8 +63,9 @@ def compute_time(ComputeTime, colorlist, savedir, plotformat, csv=False):
     table = ComputeTime.GlobalStats.loc[:, table_columns]
     units = ComputeTime.compute_units['name']
 
-    # Format columns in the table
+    # Format columns in the table and set index date frequency
     table = table.rename(columns=simple_names_units(table_columns, units))
+    table.index.levels[0].freq = ComputeTime.dates.freq
     logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
     # Data selection for the plot
@@ -126,7 +127,7 @@ def compute_percent(ComputeTime, colorlist, savedir, plotformat, csv=False):
     table_columns.extend(['total_capacity', 'percent_total_capacity', 'global_percent_capacity'])
     table = ComputeTime.GlobalStats.loc[:, table_columns]
 
-    # Format columns in the table
+    # Format columns in the table and set index date frequency
     th = {
         'compute_time': f"Compute Time ({ComputeTime.compute_units['name']})",
         'capacity': f"Capacity ({ComputeTime.compute_units['name']})",
@@ -136,6 +137,7 @@ def compute_percent(ComputeTime, colorlist, savedir, plotformat, csv=False):
         'global_percent_capacity': "Total Capacity Used Globally (%)",
     }
     table = table.rename(columns=th)
+    table.index.levels[0].freq = ComputeTime.dates.freq
     logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
     # Data selection for the plot
@@ -195,9 +197,10 @@ def global_measure(ComputeTime, selection, colorlist, savedir, plotformat, csv=F
     table_columns = ['compute_time', 'running_jobs', 'total_running_jobs', 'unique_users', 'total_unique_users']
     table = ComputeTime.GlobalStats.loc[:, table_columns]
 
-    # Format columns in the table
+    # Format columns in the table and set index date frequency
     units = [ComputeTime.compute_units['name'], 'jobs/day', 'jobs/day', 'users/day', 'users/day']
     table = table.rename(columns=simple_names_units(table_columns, units))
+    table.index.levels[0].freq = ComputeTime.dates.freq
     logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
     # Data selection for the plot
@@ -282,7 +285,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
         entity_perc = f"{entity} - percent"
         table = AggregateStats.loc[:, [entity, entity_perc, sources['total']]]
 
-        # Format columns in the table
+        # Format columns in the table and set index date frequency
         counter_name = sources['reference'].replace('_', ' ').title()
         column_names = {
             entity: f"{counter_name} of {entity} ({sources['units']})",
@@ -290,6 +293,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
             sources['total']: f"Total {counter_name} ({sources['units']})",
         }
         table = table.rename(columns=column_names)
+        table.index.levels[0].freq = ComputeTime.dates.freq
         logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
         # Plot title and data selection
@@ -457,9 +461,10 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
         plot_units = ComputeTime.compute_units['name']
         plot['ymax'] = plot_max
 
-    # Add units to main column
+    # Add units to main column and set index date frequency
     main_column = "{} ({})".format(column_title[0], plot_units)
     plot['table'].columns = plot['table'].columns.set_levels([main_column], level=0)
+    plot['table'].index.freq = ComputeTime.dates.freq
 
     logger.debug("Data used in the area plot: %s", ", ".join(plot['table'].columns.get_level_values(1)))
     ymax_fmt = '{:.2%}' if percent else '{:.2f}'
@@ -579,9 +584,10 @@ def top_fields(ComputeTime, percent, savedir, plotformat, csv=False):
         plot_units = ComputeTime.compute_units['name']
         plot['ymax'] = plot_max
 
-    # Add units to main column
+    # Add units to main column and set index date frequency
     th = simple_names_units(plot['table'].columns, plot_units)
     plot['table'] = plot['table'].rename(columns=th)
+    plot['table'].index.levels[0].freq = ComputeTime.dates.freq
 
     logger.debug("Data used in the stack plot: %s", ", ".join(plot['table'].columns))
     ymax_fmt = '{:.2%}' if percent else '{:.2f}'
@@ -691,9 +697,10 @@ def top_sites(ComputeTime, percent, savedir, plotformat, csv=False):
         plot_units = ComputeTime.compute_units['name']
         plot['ymax'] = plot_max
 
-    # Format column headers
+    # Format column headers and set index date frequency
     column_lvl = (["Compute Time ({})".format(plot_units)], plot['table'].columns.to_list())
     plot['table'].columns = pd.MultiIndex.from_product(column_lvl)
+    plot['table'].index.freq = ComputeTime.dates.freq
 
     logger.debug("Data used in the linear plot: %s", ", ".join(plot['table'].columns.get_level_values(1)))
     ymax_fmt = '{:.2%}' if percent else '{:.2f}'
