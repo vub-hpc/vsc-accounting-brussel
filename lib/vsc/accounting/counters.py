@@ -182,29 +182,28 @@ class ComputeTimeCount:
         else:
             self.log.info("Requested period of time: %s days from %s to %s", t_delta.days, date_start, date_end)
 
-        # Check requested time resolution and range of dates
+        # Generate index with requested time periods
         idx_dates = pd.date_range(date_start, date_end, freq=date_freq)
-        # Remove last element from the index of dates to avoid accounting stats beyond the end date
-        idx_dates = idx_dates.delete(-1)
 
+        # Check time resolution and range of dates
         if len(idx_dates) <= 1:
-            day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days
+            day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days  # idx_dates[0] always exists
             errmsg = f"Time resolution ({day_freq} days) is longer than requested period of time ({t_delta.days} days)"
             raise ValueError(errmsg)
         else:
-            day_freq = (idx_dates[1] - idx_dates[0]).days
+            # Calculate average frequency as some DateOffsets have non-fixed frequency
+            day_freq = idx_dates.to_series().diff().mean().days
             self.log.info("Time resolution: %s days (%s)", day_freq, idx_dates.freqstr)
+            # Remove last element from the index of dates to avoid accounting stats beyond the end date
+            idx_dates = idx_dates.delete(-1)
 
         # Report effective time interval (can be different to requested dates due to frequency constraints)
-        eff_date_start = idx_dates[0]
-        eff_date_end = idx_dates[-1] + idx_dates.freq
-        eff_delta = eff_date_end - eff_date_start
-        self.log.info(
-            "Effective period of time: %s days from %s to %s",
-            eff_delta.days,
-            eff_date_start.strftime(self.dateformat),
-            eff_date_end.strftime(self.dateformat),
-        )
+        eff_start = idx_dates[0]
+        eff_end = idx_dates[-1] + idx_dates.freq
+        eff_delta = eff_end - eff_start
+        eff_start = eff_start.strftime(self.dateformat)
+        eff_end = eff_end.strftime(self.dateformat)
+        self.log.info("Effective period of time: %s days from %s to %s", eff_delta.days, eff_start, eff_end)
 
         return idx_dates
 
@@ -441,11 +440,10 @@ class ComputeTimeCount:
         """
         rankings = list()
 
-        # Get data and time period length
+        # Aggregate data per date
         entity_list = self.getattr(aggregate + 'List')
         compute_data = self.getattr(aggregate + 'Compute')
         compute_data = compute_data.loc[:, entity_list].groupby('date').sum()
-        period_span = (compute_data.index[1] - compute_data.index[0]).days
 
         # Rank entities per compute time
         compute_rank = compute_data.sum(axis=0)
@@ -479,7 +477,9 @@ class ComputeTimeCount:
         rankings = pd.concat(rankings, axis=1, sort=False)
         rankings = rankings.sort_values(by=['compute_time'], ascending=False)
 
-        # Convert compute_time to total absolute value of coredays
+        # Calculate average length of time periods (some frequencies imply periods of different length)
+        period_span = compute_data.index.to_series().diff().mean().days
+        # Convert normalized daily compute time to total absolute compute time in the time period
         rankings['compute_time'] = rankings.loc[:, 'compute_time'] * period_span
 
         self.log.info("Ranking of %s %ss by compute time generated succesfully", len(rankings.index), aggregate)
