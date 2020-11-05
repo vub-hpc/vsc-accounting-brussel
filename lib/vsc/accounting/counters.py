@@ -180,10 +180,12 @@ class ComputeTimeCount:
             errmsg = f"End date [{date_end}] is earlier than the start date [{date_start}]"
             raise ValueError(errmsg)
         else:
-            self.log.info("Period of time: %s days", t_delta.days)
+            self.log.info("Requested period of time: %s days from %s to %s", t_delta.days, date_start, date_end)
 
         # Check requested time resolution and range of dates
         idx_dates = pd.date_range(date_start, date_end, freq=date_freq)
+        # Remove last element from the index of dates to avoid accounting stats beyond the end date
+        idx_dates = idx_dates.delete(-1)
 
         if len(idx_dates) <= 1:
             day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days
@@ -191,9 +193,20 @@ class ComputeTimeCount:
             raise ValueError(errmsg)
         else:
             day_freq = (idx_dates[1] - idx_dates[0]).days
-            self.log.info("Time resolution: %s days", day_freq)
+            self.log.info("Time resolution: %s days (%s)", day_freq, idx_dates.freqstr)
 
-            return idx_dates
+        # Report effective time interval (can be different to requested dates due to frequency constraints)
+        eff_date_start = idx_dates[0]
+        eff_date_end = idx_dates[-1] + idx_dates.freq
+        eff_delta = eff_date_end - eff_date_start
+        self.log.info(
+            "Effective period of time: %s days from %s to %s",
+            eff_delta.days,
+            eff_date_start.strftime(self.dateformat),
+            eff_date_end.strftime(self.dateformat),
+        )
+
+        return idx_dates
 
     def add_nodegroup(self, nodegroup, cores, hostlist):
         """
