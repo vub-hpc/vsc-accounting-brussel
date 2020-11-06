@@ -183,26 +183,31 @@ class ComputeTimeCount:
 
         # Generate index with requested time periods
         idx_dates = pd.date_range(date_start, date_end, freq=date_freq)
+        # Calculate frequency in days (idx_dates[0] always exists at this point)
+        day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days
+        # Remove last element from the index of dates to avoid accounting stats beyond the end date
+        idx_dates = idx_dates.delete(-1)
 
         # Check time resolution and range of dates
-        if len(idx_dates) <= 1:
-            day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days  # idx_dates[0] always exists
+        if len(idx_dates) < 1:
             errmsg = f"Time resolution ({day_freq} days) is longer than requested period of time ({t_delta.days} days)"
             raise ValueError(errmsg)
         else:
-            # Calculate average frequency as some DateOffsets have non-fixed frequency
-            day_freq = idx_dates.to_series().diff().mean().days
-            self.log.info("Time resolution: %s days (%s)", day_freq, idx_dates.freqstr)
-            # Remove last element from the index of dates to avoid accounting stats beyond the end date
-            idx_dates = idx_dates.delete(-1)
+            # Report effective time interval (can be different to requested dates due to frequency constraints)
+            eff_start = idx_dates[0]
+            eff_end = idx_dates[-1] + idx_dates.freq
+            eff_delta = (eff_end - eff_start).days
+            infomsg = "Effective period of time: %s days from %s to %s"
+            self.log.info(infomsg, eff_delta, eff_start.strftime(self.dateformat), eff_end.strftime(self.dateformat))
 
-        # Report effective time interval (can be different to requested dates due to frequency constraints)
-        eff_start = idx_dates[0]
-        eff_end = idx_dates[-1] + idx_dates.freq
-        eff_delta = eff_end - eff_start
-        eff_start = eff_start.strftime(self.dateformat)
-        eff_end = eff_end.strftime(self.dateformat)
-        self.log.info("Effective period of time: %s days from %s to %s", eff_delta.days, eff_start, eff_end)
+            # Check for at least two data points in the index
+            if len(idx_dates) == 1:
+                errmsg = f"Time resolution ({day_freq} days) only allows for a single data point. Increase resolution."
+                raise ValueError(errmsg)
+            else:
+                # Re-calculate frequency as average because some DateOffsets have non-fixed frequency
+                day_freq = idx_dates.to_series().diff().mean().days
+                self.log.info("Time resolution: %s days (%s)", day_freq, idx_dates.freqstr)
 
         return idx_dates
 
