@@ -285,7 +285,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
         entity_perc = f"{entity} - percent"
         table = AggregateStats.loc[:, [entity, entity_perc, sources['total']]]
 
-        # Format columns in the table and set index date frequency
+        # Format columns in tables and set index date frequency
         counter_name = sources['reference'].replace('_', ' ').title()
         column_names = {
             entity: f"{counter_name} of {entity} ({sources['units']})",
@@ -323,7 +323,17 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
         # Output: save files
         stackplot.save_plot(plotformat)
         if csv:
+            # Report data table
             stackplot.output_csv(table)
+            # Unstacked data table with absolute usage by entity per date and per nodegroup
+            entity_use = table.loc[:, column_names[entity]].unstack()
+            entity_use['Total'] = entity_use.sum(axis=1)
+            mean_freq = entity_use.index.to_series().diff().mean().days
+            entity_use = entity_use.multiply(mean_freq, axis=1)  # calculate absolute compute time
+            multicol = [(column_names[entity].replace('/day', ''), col) for col in entity_use.columns]
+            entity_use.columns = pd.MultiIndex.from_tuples(multicol)  # add column header with units
+            entity_use_file = stackplot.id.replace('-of-', '-absolute-of-')
+            stackplot.output_csv(table=entity_use, filename=entity_use_file)
 
 
 def pie_compute(ranking, max_top, plot_title, compute_units):
