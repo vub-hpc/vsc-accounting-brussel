@@ -364,6 +364,8 @@ class Plotter:
         except AttributeError as err:
             errmsg = f"Path to plot render for HTML page not found. Method self.set_output_paths() not called yet."
             error_exit(self.log, errmsg)
+        else:
+            img_source_path = os.path.basename(img_source_path)
 
         # Main titles
         page_title = self.title
