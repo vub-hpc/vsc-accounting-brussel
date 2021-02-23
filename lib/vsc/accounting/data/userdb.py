@@ -42,6 +42,8 @@ from vsc.accounting.parallel import parallel_exec
 from vsc.accounting.config.parser import MainConf, ConfigFile
 from vsc.accounting.data.parser import DataFile
 
+UNKNOWN_FIELD = 'Unknown'
+
 
 class UserDB:
     """
@@ -163,7 +165,7 @@ def user_basic_record(username, logger=None):
         logger = fancylogger.getLogger()
 
     # Research field is always unknown in these cases
-    user_record = {'field': 'Unknown'}
+    user_record = {'field': UNKNOWN_FIELD}
 
     # Determine site of account
     site = (None, BRUSSEL, ANTWERPEN, LEUVEN, GENT)
@@ -228,9 +230,14 @@ def get_vsc_record(username, vsc_token, logger=None):
     else:
         logger.debug(f"[{username}] user account record retrieved from VSC account '{vsc_login['username']}'")
 
+        # only use first entry of research field
+        user_field = vsc_account['research_field'][0]
+        # use custom label for 'unknown' fields
+        if user_field == 'unknown':
+            user_field = UNKNOWN_FIELD
+
         user_record = {
-            # only use first entry of research field
-            'field': vsc_account['research_field'][0],
+            'field': user_field,
             'site': INSTITUTE_LONGNAME[vsc_account['person']['institute']['name']],
             'updated': date.today().isoformat(),
         }
