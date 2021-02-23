@@ -610,7 +610,7 @@ class Plotter:
         try:
             self.fig.savefig(self.output_path[imgfmt], format=imgfmt, bbox_inches='tight')
         except PermissionError:
-            error_exit(f"Permission denied to save plot render: {imgpath}")
+            error_exit(f"Permission denied to save plot render: {self.output_path[imgfmt]}")
         else:
             self.log.info(f"Report for '{self.title}' saved in {imgfmt.upper()} format to {self.output_path[imgfmt]}")
 
