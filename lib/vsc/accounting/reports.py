@@ -700,15 +700,17 @@ def top_sites(ComputeTime, percent, savedir, plotformat, csv=False):
     plot_max = max(ComputeTime.GlobalStats.loc[:, 'total_compute_time'])
 
     if percent:
+        plot_ylabel = "Used Capacity"
         plot_units = '%'
         plot['table'] /= plot_max
         plot['ymax'] = 1
     else:
+        plot_ylabel = "Compute Time"
         plot_units = ComputeTime.compute_units['normname']
         plot['ymax'] = plot_max
 
     # Format column headers and set index date frequency
-    column_lvl = (["Compute Time ({})".format(plot_units)], plot['table'].columns.to_list())
+    column_lvl = (["f{plot_ylabel} (f{plot_units})"], plot['table'].columns.to_list())
     plot['table'].columns = pd.MultiIndex.from_product(column_lvl)
     plot['table'].index.freq = ComputeTime.dates.freq
 
