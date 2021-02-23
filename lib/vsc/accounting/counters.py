@@ -63,8 +63,8 @@ class ComputeUnits:
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
         self.known_units = {
-            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'absolute': 'corehours', 'factor': 3600},
-            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'absolute': 'coredays', 'factor': 86400},
+            'corehours': {'name': 'corehours', 'shortname': 'chd', 'freq': 'day', 'factor': 3600},
+            'coredays': {'name': 'coredays', 'shortname': 'cdd', 'freq': 'day', 'factor': 86400},
         }
 
         self.set_units(units)
@@ -80,6 +80,11 @@ class ComputeUnits:
             error_exit(self.log, errmsg)
         else:
             self.log.debug("Compute units set to '%s'", self.active_units['name'])
+
+        # Generate normalized name of the units
+        self.active_units['normname'] = self.active_units['name']
+        if self.active_units['freq']:
+            self.active_units['normname'] = f"{self.active_units['normname']}/{self.active_units['freq']}"
 
     def job_seconds_to_compute(self, job_time, used_cores, period_span):
         """
