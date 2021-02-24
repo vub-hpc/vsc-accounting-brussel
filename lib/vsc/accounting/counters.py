@@ -482,11 +482,14 @@ class ComputeTimeCount:
         rankings.append(percentile_rank)
         self.log.debug("Distributed %s %ss in percentiles by compute time", len(percentile_rank), aggregate)
 
+        # Strip any index names
+        for r, rank in enumerate(rankings):
+            rankings[r].index.name = None
         # Combine all series in a single data frame
         rankings = pd.concat(rankings, axis=1, sort=False)
         rankings = rankings.sort_values(by=['compute_time'], ascending=False)
 
-        # Calculate average length of time periods (some frequencies imply periods of different length)
+        # Calculate average length of time periods (some frequencies have periods of slightly different length)
         period_span = compute_data.index.to_series().diff().mean().days
         # Convert daily compute time to absolute compute time in the time period
         rankings['compute_time'] = rankings.loc[:, 'compute_time'] * period_span
