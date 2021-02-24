@@ -459,20 +459,24 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
 
     plot['table'] = pd.DataFrame(plot_stacks)
 
-    # Calculate maximum compute time used in time interval
+    # Total compute per time period
     ComputeTime.aggregate_perdate('GlobalStats', 'compute_time')
-    plot_max = max(ComputeTime.GlobalStats.loc[:, 'total_compute_time'])
+    plot_totals = ComputeTime.GlobalStats.loc[:, 'total_compute_time']
+    # Pick first series of total compute, all columns have same data
+    plot_totals = plot_totals.unstack().iloc[:, 0]
 
     if percent:
+        plot_ylabel = "Use of Compute Time"
         plot_units = '%'
-        plot['table'] /= plot_max
+        plot['table'] = plot['table'].divide(plot_totals, axis=0)
         plot['ymax'] = 1
     else:
+        plot_ylabel = column_title[0]
         plot_units = ComputeTime.compute_units['normname']
-        plot['ymax'] = plot_max
+        plot['ymax'] = max(plot_totals)
 
     # Add units to main column and set index date frequency
-    main_column = "{} ({})".format(column_title[0], plot_units)
+    main_column = "{} ({})".format(plot_ylabel, plot_units)
     plot['table'].columns = plot['table'].columns.set_levels([main_column], level=0)
     plot['table'].index.freq = ComputeTime.dates.freq
 
