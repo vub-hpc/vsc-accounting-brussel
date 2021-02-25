@@ -27,26 +27,28 @@
 """
 Generate accurate accounting reports about the computational resources used in an HPC cluster
 
-Available reports:
+Reports with global statistics:
  - compute-time: used compute time per node group. Top value is maximum compute capacity of the period
  - compute-percent: percentage of compute capacity used per node group
  - running-jobs: number of running jobs per node group
  - unique-users: number of unique users running jobs per node group
- - peruser-compute: used compute time per node group by each active user (separate plot per user)
- - peruser-percent: percentage of compute time used per node group by each active user (separate plot per user)
- - peruser-jobs: number of running jobs per node group by each active user (separate plot per user)
- - perfield-compute: used compute time per node group by each research field (separate plot per field)
- - perfield-percent: percentage of compute time used per node group by each research field (separate plot per field)
- - perfield-jobs: number of running jobs per node group by each research field (separate plot per field)
- - persite-compute: used compute time per node group by each research site (separate plot per site)
- - persite-percent: percentage of compute time used per node group by each research site (separate plot per site)
- - persite-jobs: number of running jobs per node group by each research site (separate plot per site)
- - top-users: total compute time used by the top percentiles of users across selected node groups
- - top-users-percent: percentage of total compute time used by the top percentiles of users across selected node groups
- - top-fields: compute time used by each research field across selected node groups (plot over time and pie chart)
- - top-fields-percent: percentage of compute time used by each research field across selected node groups (plot over time and pie chart)
- - top-sites: total compute time used by each research site across selected node groups
- - top-sites-percent: percentage of total compute time used by each research site across selected node groups.
+Batch of individual reports:
+ - peruser-compute: used compute time per node group by each active user
+ - peruser-percent: percentage of compute time used per node group by each active user
+ - peruser-jobs: number of running jobs per node group by each active user
+ - perfield-compute: used compute time per node group by each research field
+ - perfield-percent: percentage of compute time used per node group by each research field
+ - perfield-jobs: number of running jobs per node group by each research field
+ - persite-compute: used compute time per node group by each research site
+ - persite-percent: percentage of compute time used per node group by each research site
+ - persite-jobs: number of running jobs per node group by each research site
+Top rankings (pie charts and activity over time):
+ - top-users: compute time used by the top percentiles of users across all selected node groups
+ - top-users-percent: distribution of used compute time among top percentiles of users across all selected node groups
+ - top-fields: compute time used by each research field across all selected node groups
+ - top-fields-percent: distribution of used compute time among top research fields across all selected node groups
+ - top-sites: compute time used by each research site across all selected node groups
+ - top-sites-percent: distribution of used compute time among research sites across all selected node groups.
 
 @author: Alex Domingo (Vrije Universiteit Brussel)
 """
