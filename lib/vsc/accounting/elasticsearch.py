@@ -182,7 +182,7 @@ class ElasticTorque:
         Scan all hits in Search object and handle any errors
         """
         try:
-            hits = [hit for hit in self.search.scan()]
+            hits = [hit.to_dict() for hit in self.search.scan()]
         except NotFoundError as err:
             error_exit(self.log, f"ES query [{self.id}] search result not found: {err}")
         else:
