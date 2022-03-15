@@ -92,16 +92,19 @@ class UserDB:
                 self.users[n] = (user, None)
 
         # Retrieve account data of requested users
-        self.log.info(f"Retrieving {len(self.users)} user account records...")
-        requested_records = parallel_exec(
-            get_updated_record,  # worker function
-            f"User account retrieval",  # label prefixing log messages
-            self.users,  # stack of items to process
-            self.cache.contents['valid_days'],  # record_validity: forwarded to worker function
-            self.vsc_token,  # vsc_token: forwarded to worker function
-            procs=self.max_procs,
-            logger=self.log,
-        )
+        if len(self.users) > 0:
+            self.log.info(f"Retrieving {len(self.users)} user account records...")
+            requested_records = parallel_exec(
+                get_updated_record,  # worker function
+                f"User account retrieval",  # label prefixing log messages
+                self.users,  # stack of items to process
+                self.cache.contents['valid_days'],  # record_validity: forwarded to worker function
+                self.vsc_token,  # vsc_token: forwarded to worker function
+                procs=self.max_procs,
+                logger=self.log,
+            )
+        else:
+            self.log.info(f"Not retrieving user accounts, no users found")
 
         # Generate dict of user accounts and update cache
         self.records = dict()

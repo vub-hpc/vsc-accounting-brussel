@@ -515,7 +515,8 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
         pie_chart.html_addtable(top_users)
         # Area plot: make HTML document including plot, data table and ranking of users
         areaplot.html_makepage(plot_notes=[note_nodelist])
-        areaplot.html_addtable(plot['table'], "{} stats".format(areaplot.xfreq.capitalize()))
+        if areaplot.xfreq is not None:
+            areaplot.html_addtable(plot['table'], "{} stats".format(areaplot.xfreq.capitalize()))
         areaplot.html_addtable(top_users, "Ranking of top users")
     else:
         # Pie chart: add notes to plot image
