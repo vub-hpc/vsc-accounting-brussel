@@ -324,30 +324,30 @@ class Plotter:
 
     def date_freq(self):
         """
-        Return the frequency of the 'date' index in the plot's table
-        It needs to be calculated because DatetimeIndexes loose the freq attribute in Multiindexes
+        Return a readable label for frequency of the 'date' index in the plot's table
         """
-        # Number of days between consecutive dates
-        day_span = 0
+        freq_label = None
+
+        # Human readable names of DateOffset aliases
+        offset_name = {
+            'D': 'daily',
+            'W-MON': 'weekly',
+            'MS': 'monthly',
+            'QS': 'quarterly',
+            'AS': 'yearly',
+        }
+
         if 'date' in self.table.index.names:
-            dateidx = self.table.index.get_level_values('date').unique()
-            day_span = (dateidx[1] - dateidx[0]).days
+            # Get the offset alias from the table index
+            if self.table.index.nlevels == 1:
+                freq_offset = self.table.index.freqstr
+            else:
+                freq_offset = self.table.index.levels[0].freqstr
+            # Convert to a frequency label
+            if freq_offset in offset_name:
+                freq_label = offset_name[freq_offset]
 
-        # Frequency label
-        if day_span == 1:
-            freq_label = 'daily'
-        elif day_span == 7:
-            freq_label = 'weekly'
-        elif day_span > 25 and day_span < 32:
-            freq_label = 'monthly'
-        elif day_span > 80 and day_span < 100:
-            freq_label = 'quarterly'
-        elif day_span > 360 and day_span < 370:
-            freq_label = 'yearly'
-        else:
-            freq_label = None
-
-        self.log.debug("Plot date resolution re-determined to be %s", freq_label)
+            self.log.debug("Plot date resolution re-determined to be %s", freq_label)
 
         return freq_label
 
@@ -364,6 +364,8 @@ class Plotter:
         except AttributeError as err:
             errmsg = f"Path to plot render for HTML page not found. Method self.set_output_paths() not called yet."
             error_exit(self.log, errmsg)
+        else:
+            img_source_path = os.path.basename(img_source_path)
 
         # Main titles
         page_title = self.title
@@ -610,7 +612,7 @@ class Plotter:
         try:
             self.fig.savefig(self.output_path[imgfmt], format=imgfmt, bbox_inches='tight')
         except PermissionError:
-            error_exit(f"Permission denied to save plot render: {imgpath}")
+            error_exit(f"Permission denied to save plot render: {self.output_path[imgfmt]}")
         else:
             self.log.info(f"Report for '{self.title}' saved in {imgfmt.upper()} format to {self.output_path[imgfmt]}")
 

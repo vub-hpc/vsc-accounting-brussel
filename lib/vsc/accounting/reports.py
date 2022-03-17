@@ -61,10 +61,11 @@ def compute_time(ComputeTime, colorlist, savedir, plotformat, csv=False):
     # Full data table for the plot
     table_columns = ['compute_time', 'capacity', 'total_capacity']
     table = ComputeTime.GlobalStats.loc[:, table_columns]
-    units = ComputeTime.compute_units['name']
+    units = ComputeTime.compute_units['normname']
 
-    # Format columns in the table
+    # Format columns in the table and set index date frequency
     table = table.rename(columns=simple_names_units(table_columns, units))
+    table.index.levels[0].freq = ComputeTime.dates.freq
     logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
     # Data selection for the plot
@@ -126,16 +127,17 @@ def compute_percent(ComputeTime, colorlist, savedir, plotformat, csv=False):
     table_columns.extend(['total_capacity', 'percent_total_capacity', 'global_percent_capacity'])
     table = ComputeTime.GlobalStats.loc[:, table_columns]
 
-    # Format columns in the table
+    # Format columns in the table and set index date frequency
     th = {
-        'compute_time': f"Compute Time ({ComputeTime.compute_units['name']})",
-        'capacity': f"Capacity ({ComputeTime.compute_units['name']})",
+        'compute_time': f"Compute Time ({ComputeTime.compute_units['normname']})",
+        'capacity': f"Capacity ({ComputeTime.compute_units['normname']})",
         'percent_capacity': "Capacity Used (%)",
-        'total_capacity': f"Total Capacity ({ComputeTime.compute_units['name']})",
+        'total_capacity': f"Total Capacity ({ComputeTime.compute_units['normname']})",
         'percent_total_capacity': "Total Capacity Used (%)",
         'global_percent_capacity': "Total Capacity Used Globally (%)",
     }
     table = table.rename(columns=th)
+    table.index.levels[0].freq = ComputeTime.dates.freq
     logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
     # Data selection for the plot
@@ -195,9 +197,10 @@ def global_measure(ComputeTime, selection, colorlist, savedir, plotformat, csv=F
     table_columns = ['compute_time', 'running_jobs', 'total_running_jobs', 'unique_users', 'total_unique_users']
     table = ComputeTime.GlobalStats.loc[:, table_columns]
 
-    # Format columns in the table
-    units = [ComputeTime.compute_units['name'], 'jobs/day', 'jobs/day', 'users/day', 'users/day']
+    # Format columns in the table and set index date frequency
+    units = [ComputeTime.compute_units['normname'], 'jobs/day', 'jobs/day', 'users/day', 'users/day']
     table = table.rename(columns=simple_names_units(table_columns, units))
+    table.index.levels[0].freq = ComputeTime.dates.freq
     logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
     # Data selection for the plot
@@ -254,7 +257,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
 
     # Source data for selected accounting and aggregate
     try:
-        sources = source_data(selection, aggregate, ComputeTime.compute_units['name'])
+        sources = source_data(selection, aggregate, ComputeTime.compute_units['normname'])
     except AttributeError as err:
         error_exit(logger, err)
 
@@ -282,7 +285,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
         entity_perc = f"{entity} - percent"
         table = AggregateStats.loc[:, [entity, entity_perc, sources['total']]]
 
-        # Format columns in the table
+        # Format columns in tables and set index date frequency
         counter_name = sources['reference'].replace('_', ' ').title()
         column_names = {
             entity: f"{counter_name} of {entity} ({sources['units']})",
@@ -290,6 +293,7 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
             sources['total']: f"Total {counter_name} ({sources['units']})",
         }
         table = table.rename(columns=column_names)
+        table.index.levels[0].freq = ComputeTime.dates.freq
         logger.debug("Data included in the report: %s", ", ".join(table.columns))
 
         # Plot title and data selection
@@ -319,7 +323,17 @@ def aggregates(ComputeTime, aggregate, selection, percent, colorlist, savedir, p
         # Output: save files
         stackplot.save_plot(plotformat)
         if csv:
+            # Report data table
             stackplot.output_csv(table)
+            # Unstacked data table with absolute usage by entity per date and per nodegroup
+            entity_use = table.loc[:, column_names[entity]].unstack()
+            entity_use['Total'] = entity_use.sum(axis=1)
+            mean_freq = entity_use.index.to_series().diff().mean().days
+            entity_use = entity_use.multiply(mean_freq, axis=1)  # calculate absolute compute time
+            multicol = [(column_names[entity].replace('/day', ''), col) for col in entity_use.columns]
+            entity_use.columns = pd.MultiIndex.from_tuples(multicol)  # add column header with units
+            entity_use_file = stackplot.id.replace('-of-', '-absolute-of-')
+            stackplot.output_csv(table=entity_use, filename=entity_use_file)
 
 
 def pie_compute(ranking, max_top, plot_title, compute_units):
@@ -401,7 +415,7 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
     logger.debug("Top users report covering from %s to %s", *plot_daterange)
 
     # Compute units for mean compute time in pie chart
-    pie_mc_units = (ComputeTime.compute_units['name'], ComputeTime.compute_units['shortname'])
+    pie_mc_units = (ComputeTime.compute_units['normname'], ComputeTime.compute_units['shortname'])
 
     # PIE CHART OF TOP USERS
     pie_chart = pie_compute(top_users, 15, 'Top Users by Compute Time', pie_mc_units)
@@ -445,21 +459,26 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
 
     plot['table'] = pd.DataFrame(plot_stacks)
 
-    # Calculate maximum compute time used in time interval
+    # Total compute per time period
     ComputeTime.aggregate_perdate('GlobalStats', 'compute_time')
-    plot_max = max(ComputeTime.GlobalStats.loc[:, 'total_compute_time'])
+    plot_totals = ComputeTime.GlobalStats.loc[:, 'total_compute_time']
+    # Pick first series of total compute, all columns have same data
+    plot_totals = plot_totals.unstack().iloc[:, 0]
 
     if percent:
+        plot_ylabel = "Use of Compute Time"
         plot_units = '%'
-        plot['table'] /= plot_max
+        plot['table'] = plot['table'].divide(plot_totals, axis=0)
         plot['ymax'] = 1
     else:
-        plot_units = ComputeTime.compute_units['name']
-        plot['ymax'] = plot_max
+        plot_ylabel = column_title[0]
+        plot_units = ComputeTime.compute_units['normname']
+        plot['ymax'] = max(plot_totals)
 
-    # Add units to main column
-    main_column = "{} ({})".format(column_title[0], plot_units)
+    # Add units to main column and set index date frequency
+    main_column = "{} ({})".format(plot_ylabel, plot_units)
     plot['table'].columns = plot['table'].columns.set_levels([main_column], level=0)
+    plot['table'].index.freq = ComputeTime.dates.freq
 
     logger.debug("Data used in the area plot: %s", ", ".join(plot['table'].columns.get_level_values(1)))
     ymax_fmt = '{:.2%}' if percent else '{:.2f}'
@@ -475,7 +494,8 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
     areaplot = PlotterArea(**plot)
 
     # Format ranking of top users
-    top_users = format_ranking_table(top_users, ComputeTime.compute_units['name'])
+    ranking_units = (ComputeTime.compute_units['normname'], ComputeTime.compute_units['name'])
+    top_users = format_ranking_table(top_users, *ranking_units)
     top_users.index.name = 'User'
     logger.debug("Data in the ranking table: %s", ", ".join(top_users.columns))
 
@@ -495,7 +515,8 @@ def top_users(ComputeTime, percent, savedir, plotformat, csv=False):
         pie_chart.html_addtable(top_users)
         # Area plot: make HTML document including plot, data table and ranking of users
         areaplot.html_makepage(plot_notes=[note_nodelist])
-        areaplot.html_addtable(plot['table'], "{} stats".format(areaplot.xfreq.capitalize()))
+        if areaplot.xfreq is not None:
+            areaplot.html_addtable(plot['table'], "{} stats".format(areaplot.xfreq.capitalize()))
         areaplot.html_addtable(top_users, "Ranking of top users")
     else:
         # Pie chart: add notes to plot image
@@ -544,7 +565,7 @@ def top_fields(ComputeTime, percent, savedir, plotformat, csv=False):
     logger.debug("Top fields report covering from %s to %s", *plot_daterange)
 
     # Compute units for mean compute time in pie chart
-    pie_mc_units = (ComputeTime.compute_units['name'], ComputeTime.compute_units['shortname'])
+    pie_mc_units = (ComputeTime.compute_units['normname'], ComputeTime.compute_units['shortname'])
 
     # PIE CHART OF TOP FIELDS
     pie_chart = pie_compute(top_fields, 15, 'Top Research Fields by Compute Time', pie_mc_units)
@@ -566,21 +587,25 @@ def top_fields(ComputeTime, percent, savedir, plotformat, csv=False):
 
     plot['table'] = pd.DataFrame(plot_stacks)
 
-    # Calculate maximum compute time used in time interval
+    # Total compute per time period
     ComputeTime.aggregate_perdate('GlobalStats', 'compute_time')
-    plot_max = max(ComputeTime.GlobalStats.loc[:, 'total_compute_time'])
+    plot_totals = ComputeTime.GlobalStats.loc[:, 'total_compute_time']
+    # Pick first series of total compute, all columns have same data
+    plot_totals = plot_totals.unstack().iloc[:, 0]
 
     if percent:
         plot_units = '%'
-        plot['table'] /= plot_max
+        plot['table'] = plot['table'].rename(columns={'compute_time': 'use_of_compute_time'})
+        plot['table'] = plot['table'].divide(plot_totals, axis=0, level=0)
         plot['ymax'] = 1
     else:
-        plot_units = ComputeTime.compute_units['name']
-        plot['ymax'] = plot_max
+        plot_units = ComputeTime.compute_units['normname']
+        plot['ymax'] = max(plot_totals)
 
-    # Add units to main column
+    # Add units to main column and set index date frequency
     th = simple_names_units(plot['table'].columns, plot_units)
     plot['table'] = plot['table'].rename(columns=th)
+    plot['table'].index.levels[0].freq = ComputeTime.dates.freq
 
     logger.debug("Data used in the stack plot: %s", ", ".join(plot['table'].columns))
     ymax_fmt = '{:.2%}' if percent else '{:.2f}'
@@ -597,7 +622,8 @@ def top_fields(ComputeTime, percent, savedir, plotformat, csv=False):
     stackplot = PlotterStack(**plot)
 
     # Format ranking of top fields
-    top_fields = format_ranking_table(top_fields, ComputeTime.compute_units['name'])
+    ranking_units = (ComputeTime.compute_units['normname'], ComputeTime.compute_units['name'])
+    top_fields = format_ranking_table(top_fields, *ranking_units)
     top_fields.index.name = 'Field'
     logger.debug("Data in the ranking table: %s", ", ".join(top_fields.columns))
 
@@ -661,7 +687,7 @@ def top_sites(ComputeTime, percent, savedir, plotformat, csv=False):
     logger.debug("Top sites report covering from %s to %s", *plot_daterange)
 
     # Compute units for mean compute time in pie chart
-    pie_mc_units = (ComputeTime.compute_units['name'], ComputeTime.compute_units['shortname'])
+    pie_mc_units = (ComputeTime.compute_units['normname'], ComputeTime.compute_units['shortname'])
 
     # PIE CHART OF TOP SITES
     pie_chart = pie_compute(top_sites, 15, 'Top Research Sites by Compute Time', pie_mc_units)
@@ -677,21 +703,26 @@ def top_sites(ComputeTime, percent, savedir, plotformat, csv=False):
     plot_num = len(plot_sites)
     plot['table'] = ComputeTime.SiteCompute.loc[:, plot_sites].groupby('date').sum()
 
-    # Calculate maximum compute time used in time interval
+    # Total compute per time period
     ComputeTime.aggregate_perdate('GlobalStats', 'compute_time')
-    plot_max = max(ComputeTime.GlobalStats.loc[:, 'total_compute_time'])
+    plot_totals = ComputeTime.GlobalStats.loc[:, 'total_compute_time']
+    # Pick first series of total compute, all columns have same data
+    plot_totals = plot_totals.unstack().iloc[:, 0]
 
     if percent:
+        plot_ylabel = "Use of Compute Time"
         plot_units = '%'
-        plot['table'] /= plot_max
+        plot['table'] = plot['table'].divide(plot_totals, axis=0)
         plot['ymax'] = 1
     else:
-        plot_units = ComputeTime.compute_units['name']
-        plot['ymax'] = plot_max
+        plot_ylabel = "Compute Time"
+        plot_units = ComputeTime.compute_units['normname']
+        plot['ymax'] = max(plot_totals)
 
-    # Format column headers
-    column_lvl = (["Compute Time ({})".format(plot_units)], plot['table'].columns.to_list())
+    # Format column headers and set index date frequency
+    column_lvl = ([f"{plot_ylabel} ({plot_units})"], plot['table'].columns.to_list())
     plot['table'].columns = pd.MultiIndex.from_product(column_lvl)
+    plot['table'].index.freq = ComputeTime.dates.freq
 
     logger.debug("Data used in the linear plot: %s", ", ".join(plot['table'].columns.get_level_values(1)))
     ymax_fmt = '{:.2%}' if percent else '{:.2f}'
@@ -706,7 +737,8 @@ def top_sites(ComputeTime, percent, savedir, plotformat, csv=False):
     lineplot = PlotterLine(**plot)
 
     # Format ranking of top fields
-    top_sites = format_ranking_table(top_sites, ComputeTime.compute_units['name'])
+    ranking_units = (ComputeTime.compute_units['normname'], ComputeTime.compute_units['name'])
+    top_sites = format_ranking_table(top_sites, *ranking_units)
     top_sites.index.name = 'Site'
     logger.debug("Data in the ranking table: %s", ", ".join(top_sites.columns))
 
@@ -859,15 +891,16 @@ def source_data(counter, aggregate, compute_units):
     return sources
 
 
-def format_ranking_table(ranking, compute_units):
+def format_ranking_table(ranking, average_units, compute_units):
     """
     Common formating of ranking data frame to be outputted as table (HTML or CSV)
     - table: (DataFrame) ranking table from ComputeTimeFrame.rank_aggregate()
-    - compute_units: (string) long name of compute units
+    - average_units: (string) long name of average compute units
+    - compute_units: (string) long name of total compute units
     """
     ranking = ranking.loc[:, ['compute_average', 'compute_time', 'compute_percent']]
     th = {
-        'compute_average': f"Average Compute Time ({compute_units})",
+        'compute_average': f"Average Compute Time ({average_units})",
         'compute_time': f"Compute Time ({compute_units})",
         'compute_percent': 'Total Compute Used (%)',
     }

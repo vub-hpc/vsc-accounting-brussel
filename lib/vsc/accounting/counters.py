@@ -56,15 +56,15 @@ class ComputeUnits:
     def __init__(self, units='corehours'):
         """
         Define charcateristics of supported units and set the active one
-        Compute units with 'norm=True' will be normalized to days, this is useful to have units with a common
-        reference independent of time resolutions (date_freq in ComputeTimeCount)
+        Compute units are normalized to days to work with a common reference independent
+        of time resolutions (date_freq in ComputeTimeCount)
         - units: (string) selected units used to account compute time
         """
         self.log = fancylogger.getLogger(name=self.__class__.__name__)
 
         self.known_units = {
-            'corehours': {'name': 'corehours/day', 'shortname': 'chd', 'factor': 3600, 'norm': True},
-            'coredays': {'name': 'coredays/day', 'shortname': 'cdd', 'factor': 86400, 'norm': True},
+            'corehours': {'name': 'corehours', 'shortname': 'chd', 'freq': 'day', 'factor': 3600},
+            'coredays': {'name': 'coredays', 'shortname': 'cdd', 'freq': 'day', 'factor': 86400},
         }
 
         self.set_units(units)
@@ -81,19 +81,23 @@ class ComputeUnits:
         else:
             self.log.debug("Compute units set to '%s'", self.active_units['name'])
 
-    def job_seconds_to_compute(self, job_time, used_cores, days):
+        # Generate normalized name of the units
+        self.active_units['normname'] = self.active_units['name']
+        if self.active_units['freq']:
+            self.active_units['normname'] = f"{self.active_units['normname']}/{self.active_units['freq']}"
+
+    def job_seconds_to_compute(self, job_time, used_cores, period_span):
         """
         Returns compute time per day using the active compute units
         Warning: this function is structured to work with individual variables, pd.Series or pd.DataFrames that contain
                  the following numerical parameters
         - job_time: (float) real used time in seconds
         - used_cores: (int) number of cores used during job_time
-        - days: (int) number of days (used in normalized units)
+        - period_span: (int) length of time period
         """
         try:
             total_compute_units = job_time * used_cores / self.active_units['factor']
-            if self.active_units['norm']:
-                daily_compute_units = total_compute_units / days
+            daily_compute_units = total_compute_units / period_span
         except ValueError as err:
             error_exit(self.log, f"Compute time unit conversion to {self.active_units['name']} failed: {err}")
         else:
@@ -180,20 +184,37 @@ class ComputeTimeCount:
             errmsg = f"End date [{date_end}] is earlier than the start date [{date_start}]"
             raise ValueError(errmsg)
         else:
-            self.log.info("Period of time: %s days", t_delta.days)
+            self.log.info("Requested period of time: %s days from %s to %s", t_delta.days, date_start, date_end)
 
-        # Check requested time resolution and range of dates
+        # Generate index with requested time periods
         idx_dates = pd.date_range(date_start, date_end, freq=date_freq)
+        # Calculate frequency in days (idx_dates[0] always exists at this point)
+        day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days
+        # Remove last element from the index of dates to avoid accounting stats beyond the end date
+        idx_dates = idx_dates.delete(-1)
 
-        if len(idx_dates) <= 1:
-            day_freq = ((idx_dates[0] + idx_dates.freq) - idx_dates[0]).days
+        # Check time resolution and range of dates
+        if len(idx_dates) < 1:
             errmsg = f"Time resolution ({day_freq} days) is longer than requested period of time ({t_delta.days} days)"
             raise ValueError(errmsg)
         else:
-            day_freq = (idx_dates[1] - idx_dates[0]).days
-            self.log.info("Time resolution: %s days", day_freq)
+            # Report effective time interval (can be different to requested dates due to frequency constraints)
+            eff_start = idx_dates[0]
+            eff_end = idx_dates[-1] + idx_dates.freq
+            eff_delta = (eff_end - eff_start).days
+            infomsg = "Effective period of time: %s days from %s to %s"
+            self.log.info(infomsg, eff_delta, eff_start.strftime(self.dateformat), eff_end.strftime(self.dateformat))
 
-            return idx_dates
+            # Check for at least two data points in the index
+            if len(idx_dates) == 1:
+                errmsg = f"Time resolution ({day_freq} days) only allows for a single data point. Increase resolution."
+                raise ValueError(errmsg)
+            else:
+                # Re-calculate frequency as average because some DateOffsets have non-fixed frequency
+                day_freq = idx_dates.to_series().diff().mean().days
+                self.log.info("Time resolution: %s days (%s)", day_freq, idx_dates.freqstr)
+
+        return idx_dates
 
     def add_nodegroup(self, nodegroup, cores, hostlist):
         """
@@ -428,11 +449,10 @@ class ComputeTimeCount:
         """
         rankings = list()
 
-        # Get data and time period length
+        # Aggregate data per date
         entity_list = self.getattr(aggregate + 'List')
         compute_data = self.getattr(aggregate + 'Compute')
         compute_data = compute_data.loc[:, entity_list].groupby('date').sum()
-        period_span = (compute_data.index[1] - compute_data.index[0]).days
 
         # Rank entities per compute time
         compute_rank = compute_data.sum(axis=0)
@@ -462,11 +482,16 @@ class ComputeTimeCount:
         rankings.append(percentile_rank)
         self.log.debug("Distributed %s %ss in percentiles by compute time", len(percentile_rank), aggregate)
 
+        # Strip any index names
+        for r, rank in enumerate(rankings):
+            rankings[r].index.name = None
         # Combine all series in a single data frame
         rankings = pd.concat(rankings, axis=1, sort=False)
         rankings = rankings.sort_values(by=['compute_time'], ascending=False)
 
-        # Convert compute_time to total absolute value of coredays
+        # Calculate average length of time periods (some frequencies have periods of slightly different length)
+        period_span = compute_data.index.to_series().diff().mean().days
+        # Convert daily compute time to absolute compute time in the time period
         rankings['compute_time'] = rankings.loc[:, 'compute_time'] * period_span
 
         self.log.info("Ranking of %s %ss by compute time generated succesfully", len(rankings.index), aggregate)
@@ -580,10 +605,9 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
         info_msg += f" ({duplicate_jobs} duplicates removed)"
     logger.info(info_msg)
 
-    # Normalize global non-compute counters to units per day if compute units are also normalized
-    if ComputeUnits.active_units['norm']:
-        for counter in ['running_jobs', 'unique_users']:
-            global_counters[counter] /= period_span.days
+    # Normalize global non-compute counters to units per day
+    for counter in ['running_jobs', 'unique_users']:
+        global_counters[counter] /= period_span.days
 
     logger.debug("'%s' period [%s] global counters: %s", nodegroup, query_id, global_counters)
 
@@ -595,9 +619,8 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
             'jobs': jobs.groupby('username').count(),
         }
 
-        # Normalize counter of jobs to units per day if compute units are also normalized
-        if ComputeUnits.active_units['norm']:
-            peruser_counters['jobs']['compute'] /= period_span.days
+        # Normalize counter of jobs to units per day
+        peruser_counters['jobs']['compute'] /= period_span.days
 
         # Generate list of dicts with one dict per user with its counters and indexes
         # [{username: counter, date: date, nodegroup: nodegroup}, ...]
@@ -651,7 +674,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     ES.set_source(extra=['jobid', 'username', 'exec_host', 'total_execution_slots'])
     logger.debug("'%s' ES query [%s]: %s", nodegroup, query_id, ES.search.to_dict())
 
-    ES.hits = pd.DataFrame([hit.to_dict() for hit in ES.search.scan()])
+    ES.hits = pd.DataFrame(ES.scan_hits())
     logger.debug("'%s' ES query [%s] retrieved %s hits", nodegroup, query_id, len(ES.hits))
 
     # Calculate compute time for each job on this time period

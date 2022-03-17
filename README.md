@@ -32,6 +32,53 @@ Infrastructure
 * Access to ELK server with the logstash of your job scheduler
 * Access to VSC Account page
 
+## Accounting Reports
+
+Reports of the accounting stats can be generated in 3 formats:
+* rendered as plots or charts: choose SVG, PNG, JPG image format (`-f`)
+* rendered as plots/charts and including the resulting data in a separate CSV file (`-t`)
+* in a HTML document containing the plot/chart and related data tables (`-f html`)
+
+### Available reports
+
+* Reports with global statistics:
+  * **compute-time**: used compute time per node group. Top value is maximum compute capacity of the period
+  * **compute-percent**: percentage of compute capacity used per node group
+  * **running-jobs**: number of running jobs per node group
+  * **unique-users**: number of unique users running jobs per node group
+* Batch of individual reports:
+  * **peruser-compute**: used compute time per node group by each active user
+  * **peruser-percent**: percentage of compute time used per node group by each active user
+  * **peruser-jobs**: number of running jobs per node group by each active user
+  * **perfield-compute**: used compute time per node group by each research field
+  * **perfield-percent**: percentage of compute time used per node group by each research field
+  * **perfield-jobs**: number of running jobs per node group by each research field
+  * **persite-compute**: used compute time per node group by each research site
+  * **persite-percent**: percentage of compute time used per node group by each research site
+  * **persite-jobs**: number of running jobs per node group by each research site
+* Top rankings (pie charts and activity over time):
+  * **top-users**: compute time used by the top percentiles of users across all selected node groups
+  * **top-users-percent**: distribution of used compute time among top percentiles of users across all selected node groups
+  * **top-fields**: compute time used by each research field across all selected node groups
+  * **top-fields-percent**: distribution of used compute time among top research fields across all selected node groups
+  * **top-sites**: compute time used by each research site across all selected node groups
+  * **top-sites-percent**: distribution of used compute time among research sites across all selected node groups.
+
+## Example
+
+The following example generates 4 accounting reports:
+* **compute-percent**: total use of compute time (in percentage)
+* **running-jobs**: total amount of running jobs
+* **top-users-percent**: ranking of users by percentage of compute time
+* **top-sites-percent**: ranking of research sites by percentage of compute time
+
+```bash
+$ accounting-report compute-percent running-jobs top-users-percent top-sites-percent
+  -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node-group1 node-group2 -t
+```
+
+Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) of two specific groups of nodes in the cluster (`-n node-group1 node-group2`). They will be saved in the folder `general-nodes` in the current working directory (`-o`), in HTML format (`-f html`) and also saving all data tables as CSV files (`-t`).
+
 ## Data Sources
 
 ### ElasticSearch
@@ -121,47 +168,3 @@ Configuration files and data files can also be located in `/etc`. Any files defi
 4. Package resources
 
 Alternatively, the location of those files can be set to any arbitrary absolute path. In such a case, the files in those paths will be used from their current location.
-
-## Accounting Reports
-
-Reports of the accounting stats can be generated in 3 formats:
-* rendered as plots or charts: choose SVG, PNG, JPG image format (`-f`)
-* rendered as plots/charts and including the resulting data in a separate CSV file (`-t`)
-* in a HTML document containing the plot/chart and related data tables (`-f html`)
-
-The following reports are available:
-* **compute-time**: used compute time per node group. Top value is maximum compute capacity of the period
-* **compute-percent**: percentage of compute capacity used per node group
-* **running-jobs**: number of running jobs per node group
-* **unique-users**: number of unique users running jobs per node group
-* **peruser-compute**: used compute time per node group by each active user (separate plot per user)
-* **peruser-percent**: percentage of compute time used per node group by each active user (separate plot per user)
-* **peruser-jobs**: number of running jobs per node group by each active user (separate plot per user)
-* **perfield-compute**: used compute time per node group by each research field (separate plot per field)
-* **perfield-percent**: percentage of compute time used per node group by each research field (separate plot per field)
-* **perfield-jobs**: number of running jobs per node group by each research field (separate plot per field)
-* **persite-compute**: used compute time per node group by each research site (separate plot per site)
-* **persite-percent**: percentage of compute time used per node group by each research site (separate plot per site)
-* **persite-jobs**: number of running jobs per node group by each research site (separate plot per site)
-* **top-users**: total compute time used by the top percentiles of users across selected node groups
-* **top-users-percent**: percentage of total compute time used by the top percentiles of users across selected node groups
-* **top-fields**: compute time used by each research field across selected node groups (plot over time and pie chart)
-* **top-fields-percent**: percentage of compute time used by each research field across selected node groups (plot over time and pie chart)
-* **top-sites**: total compute time used by each research site across selected node groups
-* **top-sites-percent**: percentage of total compute time used by each research site across selected node groups.
-
-## Example
-
-The following example generates 4 accounting reports:
-* **compute-percent**: total use of compute time (in percentage)
-* **running-jobs**: total amount of running jobs
-* **top-users-percent**: ranking of users by percentage of compute time
-* **top-sites-percent**: ranking of research sites by percentage of compute time
-
-```bash
-$ accounting-report compute-percent running-jobs top-users-percent top-sites-percent
-  -s 2020-01-01 -e 2020-06-30 -f html -o general-nodes -n node-group1 node-group2 -t
-```
-
-Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) of two specific groups of nodes in the cluster (`-n node-group1 node-group2`). They will be saved in the folder `general-nodes` in the current working directory (`-o`), in HTML format (`-f html`) and also saving all data tables as CSV files (`-t`).
-

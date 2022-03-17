@@ -29,4 +29,4 @@ Version of vsc.accounting
 @author: Alex Domingo (Vrije Universiteit Brussel)
 """
 
-VERSION = '1.0.6'
+VERSION = '1.0.8'

@@ -42,6 +42,8 @@ from vsc.accounting.parallel import parallel_exec
 from vsc.accounting.config.parser import MainConf, ConfigFile
 from vsc.accounting.data.parser import DataFile
 
+UNKNOWN_FIELD = 'Unknown'
+
 
 class UserDB:
     """
@@ -90,16 +92,19 @@ class UserDB:
                 self.users[n] = (user, None)
 
         # Retrieve account data of requested users
-        self.log.info(f"Retrieving {len(self.users)} user account records...")
-        requested_records = parallel_exec(
-            get_updated_record,  # worker function
-            f"User account retrieval",  # label prefixing log messages
-            self.users,  # stack of items to process
-            self.cache.contents['valid_days'],  # record_validity: forwarded to worker function
-            self.vsc_token,  # vsc_token: forwarded to worker function
-            procs=self.max_procs,
-            logger=self.log,
-        )
+        if len(self.users) > 0:
+            self.log.info(f"Retrieving {len(self.users)} user account records...")
+            requested_records = parallel_exec(
+                get_updated_record,  # worker function
+                f"User account retrieval",  # label prefixing log messages
+                self.users,  # stack of items to process
+                self.cache.contents['valid_days'],  # record_validity: forwarded to worker function
+                self.vsc_token,  # vsc_token: forwarded to worker function
+                procs=self.max_procs,
+                logger=self.log,
+            )
+        else:
+            self.log.info(f"Not retrieving user accounts, no users found")
 
         # Generate dict of user accounts and update cache
         self.records = dict()
@@ -163,7 +168,7 @@ def user_basic_record(username, logger=None):
         logger = fancylogger.getLogger()
 
     # Research field is always unknown in these cases
-    user_record = {'field': 'Unknown'}
+    user_record = {'field': UNKNOWN_FIELD}
 
     # Determine site of account
     site = (None, BRUSSEL, ANTWERPEN, LEUVEN, GENT)
@@ -228,9 +233,14 @@ def get_vsc_record(username, vsc_token, logger=None):
     else:
         logger.debug(f"[{username}] user account record retrieved from VSC account '{vsc_login['username']}'")
 
+        # only use first entry of research field
+        user_field = vsc_account['research_field'][0]
+        # use custom label for 'unknown' fields
+        if user_field == 'unknown':
+            user_field = UNKNOWN_FIELD
+
         user_record = {
-            # only use first entry of research field
-            'field': vsc_account['research_field'][0],
+            'field': user_field,
             'site': INSTITUTE_LONGNAME[vsc_account['person']['institute']['name']],
             'updated': date.today().isoformat(),
         }
