@@ -65,7 +65,7 @@ class ElasticTorque:
             # Index parameters
             self.index = {
                 'name': MainConf.get('elasticsearch', 'index_name'),
-                'freq': MainConf.get('elasticsearch', 'index_freq'),
+                'ftime': MainConf.get('elasticsearch', 'index_ftime', fallback=None, mandatory=False),
                 'walltime': MainConf.get('elasticsearch', 'max_walltime'),
             }
         except KeyError as err:
@@ -115,10 +115,14 @@ class ElasticTorque:
         # End of time period is expanded with maximum walltime because we have to retrieve "Job End" events
         period_end += pd.Timedelta(self.index['walltime'])
 
-        # Add all indexes (one per month) covering the given time period
-        index_dates = pd.date_range(period_start, period_end, freq='1D')
-        index_ym = index_dates.strftime('%Y.%m').unique()
-        indexes = ['{}-{}'.format(self.index['name'], ym) for ym in index_ym]
+        if self.index['ftime']:
+            # Add all indexes covering the given time period
+            index_dates = pd.date_range(period_start, period_end, freq='1D')
+            index_ym = index_dates.strftime(self.index['ftime']).unique()
+            indexes = ['{}-{}'.format(self.index['name'], ym) for ym in index_ym]
+        else:
+            # Use provided index name with wildcards
+            indexes = [f"{self.index['name']}*"]
 
         # Set index string for ES query
         self.search = self.search.index(indexes)
