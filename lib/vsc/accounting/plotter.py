@@ -295,7 +295,8 @@ class Plotter:
             lgd_type = 'custom'
 
         # Draw legend
-        lgd = self.ax.legend(self.legend, bbox_to_anchor=(1.01, 0.00), loc="lower left", borderaxespad=1)
+        handles, labels = self.ax.get_legend_handles_labels()
+        lgd = self.ax.legend(handles, self.legend, bbox_to_anchor=(1.01, 0.00), loc="lower left", borderaxespad=1)
         self.log.debug("Plot %s legend added succesfully", lgd_type)
 
         # Set linewidth of legend handles
