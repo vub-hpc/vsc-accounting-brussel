@@ -32,7 +32,7 @@ Data retrieval from ElasticSearch for vsc.accounting
 import pandas as pd
 
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import ConnectionError, ConnectionTimeout, NotFoundError, TransportError
+from elasticsearch.exceptions import AuthorizationException, ConnectionError, ConnectionTimeout, NotFoundError, TransportError
 from elasticsearch_dsl import Search
 
 from vsc.utils import fancylogger
@@ -70,7 +70,7 @@ class ElasticTorque:
             }
         except KeyError as err:
             error_exit(logger, err)
-        
+
         # Connection settings
         es_connection = {'hosts': self.servers}
 
@@ -92,15 +92,16 @@ class ElasticTorque:
         try:
             self.client = Elasticsearch(**es_connection)
             self.search = Search(using=self.client)
-            es_cluster = self.client.cluster.health()
+            es_cluster = self.client.info()
+        except AuthorizationException as err:
+            self.log.debug("ES query [%s] connection with limited privileges established with ES cluster", self.id)
         except (ConnectionError, TransportError) as err:
             error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server failed: {err}")
         except ConnectionTimeout as err:
             error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server timed out")
         else:
-            dbgmsg = "ES query [%s] connection established with ES cluster: %s"
-            self.log.debug(dbgmsg, self.id, es_cluster['cluster_name'])
-            self.log.debug("ES query [%s] status of ES cluster is %s", self.id, es_cluster['status'])
+            self.log.debug("ES query [%s] connection established with ES cluster: %s", self.id, es_cluster)
+
 
     def set_index(self, period_start, period_end):
         """
