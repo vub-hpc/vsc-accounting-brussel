@@ -320,11 +320,13 @@ class ComputeTimeCount:
                 self.log.info(infomsg, nodegroup, counter_name.lower(), *aggregate_counts, category)
                 # Add aggregate to global data structure
                 CategoryCounts = self.getattr(category + counter_name)
-                CategoryCounts = CategoryCounts.combine_first(ng_percategory).fillna(0)
+                if not ng_percategory.empty:
+                    CategoryCounts = CategoryCounts.combine_first(ng_percategory).fillna(0)
                 self.setattr(category + counter_name, CategoryCounts)
                 # Update list of categories
                 CategoryList = self.getattr(category + 'List')
-                CategoryList.update(ng_percategory.columns)
+                if not ng_percategory.empty:
+                    CategoryList.update(ng_percategory.columns)
                 self.setattr(category + 'List', CategoryList)
 
     def update_capacity(self, period_start, nodegroup):
@@ -370,6 +372,9 @@ class ComputeTimeCount:
             users = sparse_user_data.columns.get_level_values(0)
         else:
             users = sparse_user_data.columns
+
+        if user_accounts.empty:
+            return pd.DataFrame()
 
         # Get unique categories of users in sparse data
         categories = user_accounts.loc[users, account_category]

@@ -105,6 +105,7 @@ class UserDB:
             )
         else:
             self.log.info(f"Not retrieving user accounts, no users found")
+            requested_records = []
 
         # Generate dict of user accounts and update cache
         self.records = dict()
