@@ -354,12 +354,11 @@ def pie_compute(ranking, max_top, plot_title, compute_units):
 
     # Add "Others" summing up remaining elements in ranking
     if len(ranking.index) > len(pie['table'].index):
-        others_slice = pd.Series(
-            # Calculate remaining percentage beyond pie_num to reach 100%
-            {'compute_percent': 1 - ranking['compute_percent'].iloc[:pie_num].sum()},
-            name='Others',
-        )
-        pie['table'] = pie['table'].append(others_slice)
+        # Calculate remaining percentage beyond pie_num to reach 100%
+        others_slice = {'Others': [1 - ranking['compute_percent'].iloc[:pie_num].sum()]}
+        others_slice = pd.DataFrame.from_dict(others_slice, columns=['compute_percent'], orient='index')
+
+        pie['table'] = pd.concat([pie['table'], others_slice])
 
         dbgmsg = "Grouped the %s smallest segments of the pie chart into 'Others'"
         logger.debug(dbgmsg, len(ranking.iloc[pie_num:].index))

@@ -54,8 +54,8 @@ PACKAGE = {
         # needed to manage config files
         'appdirs',
         # needed to process accounting data
-        'numpy >= 1.12.0',
-        'pandas >= 0.23.0, < 1.0.0',  # v1.0 breaks current use of freq attr in DatetimeIndex
+        'numpy >= 1.20.0',
+        'pandas >= 1.0.0',
         # needed to retrieve accounting data
         'elasticsearch >= 7.0.0',
         'elasticsearch-dsl >= 7.0.0',

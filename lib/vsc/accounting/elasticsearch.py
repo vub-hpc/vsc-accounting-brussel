@@ -32,12 +32,12 @@ Data retrieval from ElasticSearch for vsc.accounting
 import pandas as pd
 
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import ConnectionError, ConnectionTimeout, NotFoundError, TransportError
+from elasticsearch.exceptions import AuthorizationException, ConnectionError, ConnectionTimeout, NotFoundError, TransportError
 from elasticsearch_dsl import Search
 
 from vsc.utils import fancylogger
 from vsc.accounting.exit import error_exit
-from vsc.accounting.config.parser import MainConf
+from vsc.accounting.config.parser import MainConf, ConfigFile
 
 
 class ElasticTorque:
@@ -65,28 +65,43 @@ class ElasticTorque:
             # Index parameters
             self.index = {
                 'name': MainConf.get('elasticsearch', 'index_name'),
-                'freq': MainConf.get('elasticsearch', 'index_freq'),
+                'ftime': MainConf.get('elasticsearch', 'index_ftime', fallback=None, mandatory=False),
                 'walltime': MainConf.get('elasticsearch', 'max_walltime'),
             }
         except KeyError as err:
             error_exit(logger, err)
+
+        # Connection settings
+        es_connection = {'hosts': self.servers}
+
+        # Get token from configuration file to access API
+        TokenConfig = ConfigFile()
+        try:
+            es_token_file = MainConf.get('userdb', 'es_token_file', fallback='api-access.ini', mandatory=False)
+            self.api_token = TokenConfig.load(es_token_file).get('MAIN', 'es_token')
+        except KeyError as err:
+            error_exit(self.log, err)
+
+        if self.api_token:
+            es_connection['api_key'] = self.api_token
 
         # Default field to retrieve and format of timestamps
         self.fields = ['@timestamp']
         self.timeformat = '%Y-%m-%dT%H:%M:%S.%fZ'
 
         try:
-            self.client = Elasticsearch(hosts=self.servers)
+            self.client = Elasticsearch(**es_connection)
             self.search = Search(using=self.client)
-            es_cluster = self.client.cluster.health()
+            es_cluster = self.client.info()
+        except AuthorizationException as err:
+            self.log.debug("ES query [%s] connection with limited privileges established with ES cluster", self.id)
         except (ConnectionError, TransportError) as err:
             error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server failed: {err}")
         except ConnectionTimeout as err:
             error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server timed out")
         else:
-            dbgmsg = "ES query [%s] connection established with ES cluster: %s"
-            self.log.debug(dbgmsg, self.id, es_cluster['cluster_name'])
-            self.log.debug("ES query [%s] status of ES cluster is %s", self.id, es_cluster['status'])
+            self.log.debug("ES query [%s] connection established with ES cluster: %s", self.id, es_cluster)
+
 
     def set_index(self, period_start, period_end):
         """
@@ -100,10 +115,14 @@ class ElasticTorque:
         # End of time period is expanded with maximum walltime because we have to retrieve "Job End" events
         period_end += pd.Timedelta(self.index['walltime'])
 
-        # Add all indexes (one per month) covering the given time period
-        index_dates = pd.date_range(period_start, period_end, freq='1D')
-        index_ym = index_dates.strftime('%Y.%m').unique()
-        indexes = ['{}-{}'.format(self.index['name'], ym) for ym in index_ym]
+        if self.index['ftime']:
+            # Add all indexes covering the given time period
+            index_dates = pd.date_range(period_start, period_end, freq='1D')
+            index_ym = index_dates.strftime(self.index['ftime']).unique()
+            indexes = ['{}-{}'.format(self.index['name'], ym) for ym in index_ym]
+        else:
+            # Use provided index name with wildcards
+            indexes = [f"{self.index['name']}*"]
 
         # Set index string for ES query
         self.search = self.search.index(indexes)

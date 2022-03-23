@@ -92,7 +92,7 @@ Supported resource managers:
 
 The main source of user account data is a local cache file in JSON format. Records in it will be added as users are found in the accounting data. Any account data can be manually added to the local cache file. By default it will be located in `~/.local/share/vsc-accounting/userdb-cache.json`.
 
-User accounts identified as VSC accounts will be requested from the VSC Account page and stored in the local cache file. Records in the local cache will be valid for 30 days (by default). The personal token to access the VSC Account API through `vsc-accountpage-clients` can be added to its own configuration file `vsc-access.ini` (by default) or to any other configuration file in the system by setting `userdb/vsc_token_file` in the main configuration file `vsc-accounting.ini`. Please keep the VSC access token secret.
+User accounts identified as VSC accounts will be requested from the VSC Account page and stored in the local cache file. Records in the local cache will be valid for 30 days (by default). The personal token to access the VSC Account API through `vsc-accountpage-clients` can be added to its own configuration file `api-access.ini` (by default) or to any other configuration file in the system by setting `userdb/vsc_token_file` in the main configuration file `vsc-accounting.ini`. Please keep the VSC access token secret.
 
 ## Data Selection
 
@@ -150,9 +150,12 @@ Configuration files and data files used by `vsc-accounting` are installed by def
 * Main configuration file:
   * default location `~/.config/vsc-accounting/vsc-accounting.ini`
   * location can be changed with command line argument `-c`
-* VSC token: contains the token string in option `MAIN/access_token`
-  * default location `~/.config/vsc-accounting/vsc-access.ini`
+* VSC token file (`vsc_token_file`): contains the token string in option `MAIN/vsc_token`
+  * default location `~/.config/vsc-accounting/api-access.ini`
   * filename and path can be changed with the option `userdb/vsc_token_file` in the main configuration file `vsc-accounting.ini`
+* ElasticSearch token file (`es_token_file`): contains the token string in option `MAIN/es_token`
+  * default location `~/.config/vsc-accounting/api-access.ini`
+  * filename and path can be changed with the option `userdb/es_token_file` in the main configuration file `vsc-accounting.ini`
 * Nodegroup Specsheet: defines logical groups of nodes in the cluster and their characteristics (see [Data Selection](#data-selection) for more information)
   * default location: `~/.local/share/vsc-accounting/`
   * filename and path can be changed in `nodegroups/specsheet` in the main configuration file `vsc-accounting.ini`

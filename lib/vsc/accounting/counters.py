@@ -254,6 +254,7 @@ class ComputeTimeCount:
         # Create corresponding indexes for this group of nodes
         multidx = ['date', 'nodegroup']
         ng_index = pd.MultiIndex.from_product([self.dates, [nodegroup]], names=multidx)
+        ng_index_freq = self.dates.freq
         self.index = self.index.append(ng_index)
 
         # Start with capacity stats of this nodegroup
@@ -266,6 +267,7 @@ class ComputeTimeCount:
             count_computejobsusers,  # worker function
             f"'{nodegroup}' compute/job counter",  # label prefixing log messages
             ng_index.levels[0],  # stack of items to process
+            ng_index_freq,
             (nodegroup, self.NG[nodegroup]),  # nodegroup_spec: forwarded to worker function
             procs=self.max_procs,
             logger=self.log,
@@ -318,11 +320,13 @@ class ComputeTimeCount:
                 self.log.info(infomsg, nodegroup, counter_name.lower(), *aggregate_counts, category)
                 # Add aggregate to global data structure
                 CategoryCounts = self.getattr(category + counter_name)
-                CategoryCounts = CategoryCounts.combine_first(ng_percategory).fillna(0)
+                if not ng_percategory.empty:
+                    CategoryCounts = CategoryCounts.combine_first(ng_percategory).fillna(0)
                 self.setattr(category + counter_name, CategoryCounts)
                 # Update list of categories
                 CategoryList = self.getattr(category + 'List')
-                CategoryList.update(ng_percategory.columns)
+                if not ng_percategory.empty:
+                    CategoryList.update(ng_percategory.columns)
                 self.setattr(category + 'List', CategoryList)
 
     def update_capacity(self, period_start, nodegroup):
@@ -335,7 +339,7 @@ class ComputeTimeCount:
         compute_capacity = 0
 
         # Define length of current period
-        period_end = period_start + period_start.freq
+        period_end = period_start + (1 * self.dates.freq)
         period_span = period_end - period_start
 
         # Iterate over days inside given time period
@@ -368,6 +372,9 @@ class ComputeTimeCount:
             users = sparse_user_data.columns.get_level_values(0)
         else:
             users = sparse_user_data.columns
+
+        if user_accounts.empty:
+            return pd.DataFrame()
 
         # Get unique categories of users in sparse data
         categories = user_accounts.loc[users, account_category]
@@ -450,7 +457,7 @@ class ComputeTimeCount:
         rankings = list()
 
         # Aggregate data per date
-        entity_list = self.getattr(aggregate + 'List')
+        entity_list = list(self.getattr(aggregate + 'List'))
         compute_data = self.getattr(aggregate + 'Compute')
         compute_data = compute_data.loc[:, entity_list].groupby('date').sum()
 
@@ -556,11 +563,12 @@ class ComputeTimeCount:
 # See issue: https://bugs.python.org/issue29423
 
 
-def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=None):
+def count_computejobsusers(period_start, period_freq, nodegroup_spec, peruser=False, logger=None):
     """
     Returns dict with global counters on running jobs, unique users and compute time
     Data source is a list of running jobs in the given time period and in the given nodegroup
     - period_start: (pd.timestamp) start of time interval
+    - period_freq: (pd.DateIndex.freq) frequency of time interval
     - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
@@ -574,13 +582,13 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
     (nodegroup, ng_hosts) = nodegroup_spec
 
     # Define length of current period
-    period_end = period_start + period_start.freq
+    period_end = period_start + (1 * period_freq)
     period_span = period_end - period_start
 
     # Generate unique ID for the query
     query_id = period_start.strftime(DATE_FORMAT)
     # Retrieve jobs from ElasticSearch
-    jobs = get_joblist_ES(query_id, period_start, nodegroup_spec, logger=logger)
+    jobs = get_joblist_ES(query_id, period_start, period_freq, nodegroup_spec, logger=logger)
 
     # Calculate global counters
     total_jobs = len(jobs.index)
@@ -637,7 +645,7 @@ def count_computejobsusers(period_start, nodegroup_spec, peruser=False, logger=N
     return global_counters, peruser_counters
 
 
-def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
+def get_joblist_ES(query_id, period_start, period_freq, nodegroup_spec, logger=None):
     """
     Returns pd.DataFrame with list of jobs running in the current time period
     Data is retrieved from ElasticSearch
@@ -645,6 +653,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     Calculates used compute time by jobs in the period of time
     - query_id: (int) arbitrary identification number of the query
     - period_start: (pd.timestamp) start of time interval
+    - period_freq: (pd.DateIndex.freq) frequency of time interval
     - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
@@ -657,7 +666,7 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     (nodegroup, ng_hosts) = nodegroup_spec
 
     # Define length of current period
-    period_end = period_start + period_start.freq
+    period_end = period_start + (1 * period_freq)
     period_span = period_end - period_start
 
     # Connect to ElasticSearch
@@ -699,8 +708,8 @@ def get_joblist_ES(query_id, period_start, nodegroup_spec, logger=None):
     ES.hits['compute'] = ComputeUnits.job_seconds_to_compute(ES.hits['compute'], ES.hits['cores'], period_span.days)
 
     # Select username and compute time for each job
-    jobs = pd.DataFrame(columns=['jobid', 'username', 'compute'])
-    jobs = jobs.append(ES.hits.loc[:, ES.hits.columns.intersection(jobs.columns)], sort=False)
+    jobs_columns=['jobid', 'username', 'compute']
+    jobs = pd.DataFrame(ES.hits.loc[:, ES.hits.columns.intersection(jobs_columns)], columns=jobs_columns)
     jobs = jobs.set_index('jobid')
     logger.debug("'%s' ES query [%s] processed %s jobs", nodegroup, query_id, len(jobs))
 
