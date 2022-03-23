@@ -452,7 +452,7 @@ class ComputeTimeCount:
         rankings = list()
 
         # Aggregate data per date
-        entity_list = self.getattr(aggregate + 'List')
+        entity_list = list(self.getattr(aggregate + 'List'))
         compute_data = self.getattr(aggregate + 'Compute')
         compute_data = compute_data.loc[:, entity_list].groupby('date').sum()
 
