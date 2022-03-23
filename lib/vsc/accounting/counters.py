@@ -703,8 +703,8 @@ def get_joblist_ES(query_id, period_start, period_freq, nodegroup_spec, logger=N
     ES.hits['compute'] = ComputeUnits.job_seconds_to_compute(ES.hits['compute'], ES.hits['cores'], period_span.days)
 
     # Select username and compute time for each job
-    jobs = pd.DataFrame(columns=['jobid', 'username', 'compute'])
-    jobs = jobs.append(ES.hits.loc[:, ES.hits.columns.intersection(jobs.columns)], sort=False)
+    jobs_columns=['jobid', 'username', 'compute']
+    jobs = pd.DataFrame(ES.hits.loc[:, ES.hits.columns.intersection(jobs_columns)], columns=jobs_columns)
     jobs = jobs.set_index('jobid')
     logger.debug("'%s' ES query [%s] processed %s jobs", nodegroup, query_id, len(jobs))
 
