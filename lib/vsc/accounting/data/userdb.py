@@ -76,8 +76,8 @@ class UserDB:
         # Get token from configuration file to access VSC account page
         TokenConfig = ConfigFile()
         try:
-            vsc_token_file = MainConf.get('userdb', 'vsc_token_file', fallback='vsc-access.ini', mandatory=False)
-            self.vsc_token = TokenConfig.load(vsc_token_file).get('MAIN', 'access_token')
+            vsc_token_file = MainConf.get('userdb', 'vsc_token_file', fallback='api-access.ini', mandatory=False)
+            self.vsc_token = TokenConfig.load(vsc_token_file).get('MAIN', 'vsc_token')
         except KeyError as err:
             error_exit(self.log, err)
 

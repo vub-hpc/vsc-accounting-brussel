@@ -37,7 +37,7 @@ from elasticsearch_dsl import Search
 
 from vsc.utils import fancylogger
 from vsc.accounting.exit import error_exit
-from vsc.accounting.config.parser import MainConf
+from vsc.accounting.config.parser import MainConf, ConfigFile
 
 
 class ElasticTorque:
@@ -70,13 +70,27 @@ class ElasticTorque:
             }
         except KeyError as err:
             error_exit(logger, err)
+        
+        # Connection settings
+        es_connection = {'hosts': self.servers}
+
+        # Get token from configuration file to access API
+        TokenConfig = ConfigFile()
+        try:
+            es_token_file = MainConf.get('userdb', 'es_token_file', fallback='api-access.ini', mandatory=False)
+            self.api_token = TokenConfig.load(es_token_file).get('MAIN', 'es_token')
+        except KeyError as err:
+            error_exit(self.log, err)
+
+        if self.api_token:
+            es_connection['api_key'] = self.api_token
 
         # Default field to retrieve and format of timestamps
         self.fields = ['@timestamp']
         self.timeformat = '%Y-%m-%dT%H:%M:%S.%fZ'
 
         try:
-            self.client = Elasticsearch(hosts=self.servers)
+            self.client = Elasticsearch(**es_connection)
             self.search = Search(using=self.client)
             es_cluster = self.client.cluster.health()
         except (ConnectionError, TransportError) as err:
