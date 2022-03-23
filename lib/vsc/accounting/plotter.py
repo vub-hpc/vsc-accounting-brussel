@@ -540,7 +540,7 @@ class Plotter:
             table_styled = table_styled.background_gradient(cmap='YlGnBu', axis='index', subset=graded_cols)
             self.log.debug("HTML page: table color gradient applied")
 
-        table_html = table_styled.render()
+        table_html = table_styled.to_html()
 
         # Parse table html
         table_soup = BeautifulSoup(table_html, 'lxml')
