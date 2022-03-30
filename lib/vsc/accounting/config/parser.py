@@ -69,7 +69,7 @@ class ConfigFile:
         self.locate_config(configfile)
 
         # Read contents of config file
-        self.opts = configparser.ConfigParser()
+        self.opts = configparser.ConfigParser(interpolation=None)
         try:
             self.read()
         except FileNotFoundError as err:
