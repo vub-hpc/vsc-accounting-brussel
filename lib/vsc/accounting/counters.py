@@ -46,7 +46,7 @@ from vsc.accounting.data.userdb import UserDB
 
 
 DATE_FORMAT = '%Y-%m-%d'  # Use ISO date format
-
+SUPPORTED_DATA_SOURCES = ['elasticsearch', 'csv']
 
 class ComputeUnits:
     """
@@ -216,19 +216,25 @@ class ComputeTimeCount:
 
         return idx_dates
 
-    def add_nodegroup(self, nodegroup, cores, hostlist):
+    def add_nodegroup(self, nodegroup, cores, hostlist, data_source):
         """
         Add the definition of a new node group to the accounting of stats
         - nodegroup: (string) name of the new group of nodes
         - cores: (integer) number of cores per node
         - hostlist: (list of dicts) each element should include
                     {regex: pattern of hostnames, n: number of nodes, start: date string, end: date string}
+        - data_source: (string) name of data source type
         """
         # Check number of cores
         if str(cores).isdigit():
             self.log.debug("'%s' cores per host: %s", nodegroup, cores)
         else:
             errmsg = f"Cores per host of nodegroup '{nodegroup}' are not a positive integer"
+            error_exit(self.log, errmsg)
+
+        # Check data source
+        if data_source not in SUPPORTED_DATA_SOURCES:
+            errmsg = f"Unsupported data source: '{data_source}'. Choices: {','.join(SUPPORTED_DATA_SOURCES)}"
             error_exit(self.log, errmsg)
 
         # Update nodegroup host list with cores per node and add missing start and end datetimes
@@ -267,8 +273,9 @@ class ComputeTimeCount:
             count_computejobsusers,  # worker function
             f"'{nodegroup}' compute/job counter",  # label prefixing log messages
             ng_index.levels[0],  # stack of items to process
-            ng_index_freq,
+            ng_index_freq,  # time frequency of the index
             (nodegroup, self.NG[nodegroup]),  # nodegroup_spec: forwarded to worker function
+            data_source=data_source,
             procs=self.max_procs,
             logger=self.log,
             peruser=True,  # forwarded to worker function
@@ -563,7 +570,7 @@ class ComputeTimeCount:
 # See issue: https://bugs.python.org/issue29423
 
 
-def count_computejobsusers(period_start, period_freq, nodegroup_spec, peruser=False, logger=None):
+def count_computejobsusers(period_start, period_freq, nodegroup_spec, data_source, peruser=False, logger=None):
     """
     Returns dict with global counters on running jobs, unique users and compute time
     Data source is a list of running jobs in the given time period and in the given nodegroup
@@ -572,11 +579,17 @@ def count_computejobsusers(period_start, period_freq, nodegroup_spec, peruser=Fa
     - nodegroup_spec: (tuple) (nodegroup: [hosts])
       - nodegroup: (string) name of group of nodes
       - hosts: (list) [{regex: hostname pattern, n: number of nodes, start: date string, end: date string}]
+    - data_source: (string) name of data source type
     - peruser: (boolean) return additional dicts with stats per user
     - logger: (object) fancylogger object of the caller
     """
     if logger is None:
         logger = fancylogger.getLogger()
+
+    # Check data source
+    if data_source not in SUPPORTED_DATA_SOURCES:
+        errmsg = f"Unsupported data source: '{data_source}'. Choices: {','.join(SUPPORTED_DATA_SOURCES)}"
+        error_exit(logger, errmsg)
 
     # Unpack nodegroup_spec
     (nodegroup, ng_hosts) = nodegroup_spec
@@ -587,8 +600,10 @@ def count_computejobsusers(period_start, period_freq, nodegroup_spec, peruser=Fa
 
     # Generate unique ID for the query
     query_id = period_start.strftime(DATE_FORMAT)
-    # Retrieve jobs from ElasticSearch
-    jobs = get_joblist_ES(query_id, period_start, period_freq, nodegroup_spec, logger=logger)
+
+    # Retrieve job records
+    if data_source == 'elasticsearch':
+        jobs = get_joblist_ES(query_id, period_start, period_freq, nodegroup_spec, logger=logger)
 
     # Calculate global counters
     total_jobs = len(jobs.index)
