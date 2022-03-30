@@ -65,10 +65,10 @@ class ElasticTorque:
             # Index parameters
             self.index = {
                 'name': MainConf.get('elasticsearch', 'index_name'),
-                'walltime': MainConf.get('elasticsearch', 'max_walltime'),
+                'walltime': MainConf.get('nodegroups', 'max_walltime'),
             }
         except KeyError as err:
-            error_exit(logger, err)
+            error_exit(self.log, err)
 
         # Connection settings
         es_connection = {'hosts': self.servers}
