@@ -34,7 +34,8 @@ import re
 import warnings
 
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import AuthorizationException, ConnectionError, ConnectionTimeout, NotFoundError, TransportError
+from elasticsearch.exceptions import AuthorizationException, ConnectionError, ConnectionTimeout
+from elasticsearch.exceptions import ElasticsearchWarning, NotFoundError, TransportError
 from elasticsearch_dsl import Search
 
 from vsc.utils import fancylogger
@@ -90,19 +91,9 @@ class ElasticTorque:
         self.fields = ['@timestamp']
         self.timeformat = '%Y-%m-%dT%H:%M:%S.%fZ'
 
-        try:
-            self.client = Elasticsearch(**es_connection)
-            self.search = Search(using=self.client)
-            es_cluster = self.client.info()
-        except AuthorizationException as err:
-            self.log.debug("ES query [%s] connection with limited privileges established with ES cluster", self.id)
-        except (ConnectionError, TransportError) as err:
-            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server failed: {err}")
-        except ConnectionTimeout as err:
-            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server timed out")
-        else:
-            self.log.debug("ES query [%s] connection established with ES cluster: %s", self.id, es_cluster)
-
+        # Create search request to ElasticSearch
+        self.client = Elasticsearch(**es_connection)
+        self.search = Search(using=self.client)
 
     def set_index(self, period_start, period_end):
         """
@@ -199,11 +190,19 @@ class ElasticTorque:
     def scan_hits(self):
         """
         Scan all hits in Search object and handle any errors
+        Ignore warnings from missing permissions (eg. missing 'monitor' role in server)
         """
         try:
-            hits = [hit.to_dict() for hit in self.search.scan()]
+            with warnings.catch_warnings(record=True) as w:
+                hits = [hit.to_dict() for hit in self.search.scan()]
         except NotFoundError as err:
             error_exit(self.log, f"ES query [{self.id}] search result not found: {err}")
+        except AuthorizationException as err:
+            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch is not authorized: {err}")
+        except (ConnectionError, TransportError) as err:
+            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server failed: {err}")
+        except ConnectionTimeout as err:
+            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server timed out")
         else:
             return hits
 
@@ -240,7 +239,6 @@ class ElasticTorque:
                     corecount += int(corenum[1]) - int(corenum[0])
 
         return corecount
-
 
     def load_job_records(self, period_start, period_end, hostlist):
         """
@@ -282,4 +280,3 @@ class ElasticTorque:
         )
 
         return hits
-
