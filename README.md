@@ -29,7 +29,7 @@ Software dependencies
   * elasticsearch-dsl
 
 Infrastructure
-* Access to ELK server with the logstash of your job scheduler
+* Access to ELK server with the log records of your job scheduler
 * Access to VSC Account page
 
 ## Accounting Reports
@@ -83,7 +83,9 @@ Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) 
 
 ### ElasticSearch
 
-The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
+The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. Authorized access to ElasticSearch can be handled with an [api key](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html) through a token encoded string in the configuration option `MAIN/es_token` in the token file `es_token_file` (see [Configuration files](#location-of-configuration-and-data-files)).
+
+The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
 
 Supported resource managers:
 * **Torque**: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
