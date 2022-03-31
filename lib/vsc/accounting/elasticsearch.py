@@ -1,5 +1,5 @@
 ##
-# Copyright 2020-2020 Vrije Universiteit Brussel
+# Copyright 2020-2022 Vrije Universiteit Brussel
 #
 # This file is part of vsc-accounting-brussel,
 # originally created by the HPC team of Vrij Universiteit Brussel (http://hpc.vub.be),
@@ -8,7 +8,7 @@
 # the Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# https://github.com/sisc-hpc/vsc-accounting-brussel
+# https://github.com/vub-hpc/vsc-accounting-brussel
 #
 # vsc-accounting-brussel is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -65,7 +65,6 @@ class ElasticTorque:
             # Index parameters
             self.index = {
                 'name': MainConf.get('elasticsearch', 'index_name'),
-                'ftime': MainConf.get('elasticsearch', 'index_ftime', fallback=None, mandatory=False),
                 'walltime': MainConf.get('elasticsearch', 'max_walltime'),
             }
         except KeyError as err:
@@ -106,7 +105,7 @@ class ElasticTorque:
     def set_index(self, period_start, period_end):
         """
         Set index string for query covering the given time period
-        Basename and frequency of indexes is determined by self.index
+        Basename pattern is determined by self.index
         All required indexes are added to the index string
         - period_start, period_end: (pd.datetime) time limits of the query
         """
@@ -115,11 +114,10 @@ class ElasticTorque:
         # End of time period is expanded with maximum walltime because we have to retrieve "Job End" events
         period_end += pd.Timedelta(self.index['walltime'])
 
-        if self.index['ftime']:
-            # Add all indexes covering the given time period
+        if '%' in self.index['name']:
+            # Add all indexes covering time period in given format
             index_dates = pd.date_range(period_start, period_end, freq='1D')
-            index_ym = index_dates.strftime(self.index['ftime']).unique()
-            indexes = ['{}-{}'.format(self.index['name'], ym) for ym in index_ym]
+            indexes = list(index_dates.strftime(self.index['name']).unique())
         else:
             # Use provided index name with wildcards
             indexes = [f"{self.index['name']}*"]

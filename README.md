@@ -29,7 +29,7 @@ Software dependencies
   * elasticsearch-dsl
 
 Infrastructure
-* Access to ELK server with the logstash of your job scheduler
+* Access to ELK server with the log records of your job scheduler
 * Access to VSC Account page
 
 ## Accounting Reports
@@ -83,7 +83,9 @@ Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) 
 
 ### ElasticSearch
 
-The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
+The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. Authorized access to ElasticSearch can be handled with an [api key](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html) through an encoded token string. The token can be added to its own configuration file `api-access.ini` (by default) or to any other configuration file in the system by setting `elasticseaerch/es_token_file` in the main configuration file `vsc-accounting.ini` (see [Configuration files](#location-of-configuration-and-data-files)).
+
+The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
 
 Supported resource managers:
 * **Torque**: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
@@ -92,7 +94,7 @@ Supported resource managers:
 
 The main source of user account data is a local cache file in JSON format. Records in it will be added as users are found in the accounting data. Any account data can be manually added to the local cache file. By default it will be located in `~/.local/share/vsc-accounting/userdb-cache.json`.
 
-User accounts identified as VSC accounts will be requested from the VSC Account page and stored in the local cache file. Records in the local cache will be valid for 30 days (by default). The personal token to access the VSC Account API through `vsc-accountpage-clients` can be added to its own configuration file `api-access.ini` (by default) or to any other configuration file in the system by setting `userdb/vsc_token_file` in the main configuration file `vsc-accounting.ini`. Please keep the VSC access token secret.
+User accounts identified as VSC accounts will be requested from the VSC Account page and stored in the local cache file. Records in the local cache will be valid for 30 days (by default). The personal token to access the VSC Account API through [vsc-accountpage-clients](https://github.com/hpcugent/vsc-accountpage-clients) can be added to its own configuration file `api-access.ini` (by default) or to any other configuration file in the system by setting `userdb/vsc_token_file` in the main configuration file `vsc-accounting.ini` (see [Configuration files](#location-of-configuration-and-data-files)).
 
 ## Data Selection
 
