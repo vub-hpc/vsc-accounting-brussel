@@ -63,7 +63,7 @@ from vsc.accounting.version import VERSION
 from vsc.accounting.exit import error_exit
 from vsc.accounting.config.parser import MainConf
 from vsc.accounting.data.parser import DataFile
-from vsc.accounting.counters import ComputeTimeCount
+from vsc.accounting.counters import ComputeTimeCount, SUPPORTED_DATA_SOURCES
 
 import vsc.accounting.data.parser as dataparser
 import vsc.accounting.reports as report
@@ -108,7 +108,7 @@ def main():
         '-d', dest='debug', help='use debug log level', required=False, action='store_true'
     )
     cli_core.add_argument(
-        '-i',
+        '-I',
         dest='force_install',
         help='force (re)installation of any data files needed from package resources',
         required=False,
@@ -140,6 +140,7 @@ def main():
     try:
         nodegroups_spec = MainConf.get('nodegroups', 'specsheet')
         nodegroups_default = MainConf.get('nodegroups', 'default').split(',')
+        nodegroups_data_source = MainConf.get('nodegroups', 'data_source')
     except KeyError as err:
         error_exit(logger, err)
     else:
@@ -183,6 +184,14 @@ def main():
     )
     cli.add_argument(
         '-t', dest='csv', help='write report data table in a CSV file', required=False, action='store_true',
+    )
+    cli.add_argument(
+        '-i',
+        dest='data_source',
+        help=f'source of input data (default: {nodegroups_data_source})',
+        choices=SUPPORTED_DATA_SOURCES,
+        default=nodegroups_data_source,
+        required=False,
     )
     cli.add_argument(
         '-o',
@@ -260,7 +269,7 @@ def main():
 
     for ng in nodegroup_list:
         logger.info("Processing jobs on %s nodes...", ng)
-        ComputeTime.add_nodegroup(ng, nodegroups[ng]['cores'], nodegroups[ng]['hosts'])
+        ComputeTime.add_nodegroup(ng, nodegroups[ng]['cores'], nodegroups[ng]['hosts'], cli_args.data_source)
 
     # Colors of each nodegroup
     plot_colors = {ng: nodegroups[ng]['color'] for ng in nodegroup_list}

@@ -30,9 +30,12 @@ Data retrieval from ElasticSearch for vsc.accounting
 """
 
 import pandas as pd
+import re
+import warnings
 
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import AuthorizationException, ConnectionError, ConnectionTimeout, NotFoundError, TransportError
+from elasticsearch.exceptions import AuthorizationException, ConnectionError, ConnectionTimeout
+from elasticsearch.exceptions import ElasticsearchWarning, NotFoundError, TransportError
 from elasticsearch_dsl import Search
 
 from vsc.utils import fancylogger
@@ -65,10 +68,10 @@ class ElasticTorque:
             # Index parameters
             self.index = {
                 'name': MainConf.get('elasticsearch', 'index_name'),
-                'walltime': MainConf.get('elasticsearch', 'max_walltime'),
+                'walltime': MainConf.get('nodegroups', 'max_walltime'),
             }
         except KeyError as err:
-            error_exit(logger, err)
+            error_exit(self.log, err)
 
         # Connection settings
         es_connection = {'hosts': self.servers}
@@ -88,19 +91,9 @@ class ElasticTorque:
         self.fields = ['@timestamp']
         self.timeformat = '%Y-%m-%dT%H:%M:%S.%fZ'
 
-        try:
-            self.client = Elasticsearch(**es_connection)
-            self.search = Search(using=self.client)
-            es_cluster = self.client.info()
-        except AuthorizationException as err:
-            self.log.debug("ES query [%s] connection with limited privileges established with ES cluster", self.id)
-        except (ConnectionError, TransportError) as err:
-            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server failed: {err}")
-        except ConnectionTimeout as err:
-            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server timed out")
-        else:
-            self.log.debug("ES query [%s] connection established with ES cluster: %s", self.id, es_cluster)
-
+        # Create search request to ElasticSearch
+        self.client = Elasticsearch(**es_connection)
+        self.search = Search(using=self.client)
 
     def set_index(self, period_start, period_end):
         """
@@ -197,10 +190,93 @@ class ElasticTorque:
     def scan_hits(self):
         """
         Scan all hits in Search object and handle any errors
+        Ignore warnings from missing permissions (eg. missing 'monitor' role in server)
         """
         try:
-            hits = [hit.to_dict() for hit in self.search.scan()]
+            with warnings.catch_warnings(record=True) as w:
+                hits = [hit.to_dict() for hit in self.search.scan()]
         except NotFoundError as err:
             error_exit(self.log, f"ES query [{self.id}] search result not found: {err}")
+        except AuthorizationException as err:
+            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch is not authorized: {err}")
+        except (ConnectionError, TransportError) as err:
+            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server failed: {err}")
+        except ConnectionTimeout as err:
+            error_exit(self.log, f"ES query [{self.id}] connection to ElasticSearch server timed out")
         else:
             return hits
+
+    def corecount(self, exec_hosts, active_hosts, totalcores=None):
+        """
+        Parse 'exec_host' formatted data and return number of cores of active hosts in this group of nodes
+        If all hosts match, returns totalcores (if provided)
+        - exec_hosts: (list) 'exec_host' string with hostnames allocated to job
+        - active_hosts: (list of dicts) each element should include
+            {regex: pattern of hostnames, start: date string, end: date string}
+        - totalcores: (integer) number of cores used by job
+        """
+        corespec = list()
+        corecount = 0
+
+        # Take core specification for job hosts matching current node group
+        for node in active_hosts:
+            corespec += [host.split('/')[1] for host in exec_hosts if re.match(node['regex'], host)]
+
+        if totalcores and len(corespec) == len(exec_hosts):
+            # All job hosts are in this nodegroup
+            corecount = totalcores
+        else:
+            # Count the actual number of cores used in matching hosts
+            # This count should only be needed in a few cases
+            # (e.g. jobs that used non-GPU and GPU nodes simultaneously)
+            coreranges = [numrange for spec in corespec for numrange in spec.split(',')]
+            # Add to total the first core of all elements in list
+            corecount += len(coreranges)
+            # Add to total any additional cores in ranges of cores
+            for numrange in coreranges:
+                if '-' in numrange:
+                    corenum = numrange.split('-')
+                    corecount += int(corenum[1]) - int(corenum[0])
+
+        return corecount
+
+    def load_job_records(self, period_start, period_end, hostlist):
+        """
+        Load job data from ElasticSearch into a pd.DataFrame
+        Select columns matching the defined header labels/indexes
+        Select records in given time period for given hosts
+        - period_start, period_end: (pd.datetime) time limits of the query
+        - hostlist: (list of dicts) each element should include
+            {regex: pattern of hostnames, start: date string, end: date string}
+        """
+        # Query indexes with data in this time period
+        self.set_index(period_start, period_end)
+        # Match active nodes in this time period
+        self.query_usednodes(period_start, period_end, hostlist)
+        # Filter "job end" events
+        self.filter_term('action.keyword', 'E')
+        # Set time range of query
+        self.filter_timerange(period_start, period_end)
+        # Set data fields to retrieve
+        self.set_source(extra=['jobid', 'username', 'exec_host', 'total_execution_slots'])
+        self.log.debug("ES query [%s]: %s", self.id, self.search.to_dict())
+
+        hits = pd.DataFrame(self.scan_hits())
+        self.log.debug("ES query [%s]: retrieved %s hits from ElasticSearch", self.id, len(hits))
+
+        if hits.empty:
+            # Add column headers on empty search results
+            hits = pd.DataFrame(columns=self.fields)
+
+        # Convert date strings to datetime objects
+        hits['start_time'] = pd.to_datetime(hits['start_time'], format=self.timeformat, errors='coerce')
+        hits['end_time'] = pd.to_datetime(hits['end_time'], format=self.timeformat, errors='coerce')
+
+        # Account number of cores used by each job
+        hits['cores'] = hits.apply(
+            lambda row: self.corecount(row['exec_host'], hostlist, row['total_execution_slots']),
+            axis=1,  # apply row wise
+            result_type='reduce',  # return series if possible
+        )
+
+        return hits

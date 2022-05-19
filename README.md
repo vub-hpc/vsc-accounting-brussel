@@ -29,7 +29,7 @@ Software dependencies
   * elasticsearch-dsl
 
 Infrastructure
-* Access to ELK server with the log records of your job scheduler
+* Access to log records of your job scheduler (ElasticSearch, CSV files)
 * Access to VSC Account page
 
 ## Accounting Reports
@@ -81,14 +81,15 @@ Reports will cover the first six months of 2020 (`-s 2020-01-01 -e 2020-06-30`) 
 
 ## Data Sources
 
-### ElasticSearch
+### Job records
 
-The retrieval of data requires an ElasticSearch instance containing the log records from the job scheduler. Authorized access to ElasticSearch can be handled with an [api key](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html) through an encoded token string. The token can be added to its own configuration file `api-access.ini` (by default) or to any other configuration file in the system by setting `elasticseaerch/es_token_file` in the main configuration file `vsc-accounting.ini` (see [Configuration files](#location-of-configuration-and-data-files)).
-
-The accounting queries for `JOB_END` events and uses those records to calculate the use of compute resources with precision to the second.
+The retrieval of job records can be done from CSV files or from an ElasticSearch instance. In both cases the data source should have entries corresponding to job *end* events (*i.e.* job completion, failure or cancellation). Job entries should contain data fields for at least job ID, username, start time, end time, list of used hosts, number of CPU cores.
 
 Supported resource managers:
-* **Torque**: log entries should at least contain the timestamp record `@timestamp`. Reports included in `accounting-report` require also `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
+* CSV files: any, the structure of the data can be configured in the main configuration file `vsc-accounting.ini`.
+* ElasticSearch: queries are designed to work with data fields from Torque, requiring `action.keyword`, `start_time`, `end_time`, `used_nodes`, `jobid`, `username`, `exec_host`, `total_execution_slots`.
+
+Authorized access to ElasticSearch can be handled with an [api key](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html) through an encoded token string. The token can be added to its own configuration file `api-access.ini` (by default) or to any other configuration file in the system by setting `elasticseaerch/es_token_file` in the main configuration file `vsc-accounting.ini` (see [Configuration files](#location-of-configuration-and-data-files)).
 
 ### User account data
 
